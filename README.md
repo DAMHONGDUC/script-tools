@@ -55,10 +55,10 @@ Add `Release/` to the project's `.gitignore`.
 
 | Script | Output |
 | --- | --- |
-| `android/build_release_apk.sh` | `<project>/Release/<APP_NAME>[-<flavor>]-<versionName>-<versionCode>.apk` |
-| `android/build_release_aab.sh` | `<project>/Release/<APP_NAME>[-<flavor>]-<versionName>-<versionCode>.aab` |
+| `android/build_release_apk.sh` | `<project>/Release/[<flavor>-]<APP_NAME>-<versionName>-<versionCode>.apk` |
+| `android/build_release_aab.sh` | `<project>/Release/[<flavor>-]<APP_NAME>-<versionName>-<versionCode>.aab` |
 
-Each script clears every build output, runs the unit tests, builds the release, replaces the previous file of the same format in `Release/`, and verifies the signature. Signing itself is the project's Gradle `signingConfig`; without the key file the output is reported as unsigned. `FLAVOR=<flavor>` picks a flavor.
+Each script clears every build output, runs the unit tests, builds the release, replaces the previous file of the same flavor and format in `Release/`, and verifies the signature. Signing itself is the project's Gradle `signingConfig`; without the key file the output is reported as unsigned. `FLAVOR=<flavor>` picks a flavor.
 
 ## Android make targets
 
