@@ -1,0 +1,14 @@
+name: script_tools_flutter
+description: Dart helpers the flutter/ scripts run, such as the app icon image tools.
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  # Pixel access for the icon tools. `dart run` resolves a script against its
+  # own package, so the host app's copy of this dependency is invisible here.
+  image: ^4.9.1
+
+dev_dependencies:
+  lints: ^6.1.0

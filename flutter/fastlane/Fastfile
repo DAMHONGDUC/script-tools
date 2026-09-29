@@ -1,0 +1,910 @@
+# The whole iOS release pipeline, shared by every Flutter app that embeds
+# script-tools. Imported, never copied:
+#
+#   # ios/fastlane/Fastfile
+#   import "../../packages/script-tools/flutter/fastlane/Fastfile"
+#   sd_ios_app(team_id: "…", targets: [ … ])
+#
+# It owns the four lanes — `beta`, `upload`, `preflight`, `certificates` — and
+# everything they need. What it does NOT own is what the app is: the bundle
+# ids, the Xcode targets and their entitlements arrive through `sd_ios_app`,
+# and an app's own Fastfile is that call and the import above it. Same split
+# `flutter/release_ios.sh` already makes, one level up.
+#
+# The lanes are named, not prefixed, because they are typed:
+# `bundle exec fastlane beta`. Everything else carries `sd_` so an app adding a
+# helper of its own cannot silently replace one of these.
+#
+# **Fastlane never archives.** It signs, exports and distributes what
+# `flutter/build_ipa.sh` builds. Firebase and RevenueCat
+# config arrive through `--dart-define-from-file`, a flag xcodebuild and `gym`
+# know nothing about. An archive made by them carries empty config:
+# `Firebase.initializeApp` throws, `main()` swallows it, and the app dies on the
+# first `FirebaseAuth.instance` with "[core/no-app] No Firebase App '[DEFAULT]'
+# has been created" — a crash naming nothing to do with the missing flag. That
+# is the same trap as archiving from Xcode, and the reason that script exists at
+# all. Do not replace the `sh` call below with `build_app`.
+
+require "English"
+require "json"
+require "tmpdir"
+require "shellwords"
+
+default_platform(:ios)
+
+# ---------------------------------------------------------------------------
+# What the app is
+# ---------------------------------------------------------------------------
+
+# Mutated rather than reassigned: `sd_ios_app` fills it in from the app's own
+# Fastfile at parse time, and a constant assigned a second time warns.
+SD_IOS_APP_STORE = {} unless defined?(SD_IOS_APP_STORE)
+
+# Declares the app to every lane below. Call it once, AFTER the import — the
+# import is what defines this method.
+#
+#   sd_ios_app(
+#     team_id: "WNG5UWNJ6H",
+#     targets: [
+#       { name: "Runner", bundle_id: "app.dd.migraine.tracker",
+#         entitlements: "Runner/Runner.entitlements" },
+#       { name: "BaroEaseWidgetExtension", bundle_id: "app.dd.migraine.tracker.BaroEaseWidgetExtension",
+#         entitlements: "BaroEaseWidget/BaroEaseWidget.entitlements" },
+#     ],
+#   )
+#
+# `targets` is ORDERED and the first one is the app itself — that is the bundle
+# id every upload, every config check and every TestFlight query uses. The rest
+# are app extensions, which need profiles and export entries but are never
+# uploaded on their own. An order that puts the widget first would upload into
+# the wrong App Store Connect record, so the order is stated here rather than
+# left to a second `app_identifier:` argument that could disagree with it.
+#
+# `entitlements` is a path under `ios/` and may be omitted for a target that
+# claims none; the entitlement check then skips that target instead of failing.
+#
+# `flavors` is the set `flavor:` accepts, and indexes `.firebaserc`, `env/` and
+# `env_assets/` alike.
+#
+# `script_tools` and `design_system` are the two submodules' paths from the repo
+# root: the build script lives in the first, and CI records the second's commit.
+def sd_ios_app(
+  team_id:,
+  targets:,
+  flavors: %w[dev prod],
+  script_tools: "packages/script-tools",
+  design_system: "packages/flutter-system-design-kit"
+)
+  UI.user_error!("sd_ios_app: targets must not be empty — the first one is the app.") if targets.to_a.empty?
+
+  normalized = targets.map do |target|
+    name = target[:name].to_s
+    bundle_id = target[:bundle_id].to_s
+    UI.user_error!("sd_ios_app: every target needs a :name and a :bundle_id, got #{target.inspect}") if name.empty? || bundle_id.empty?
+
+    { name: name, bundle_id: bundle_id, entitlements: target[:entitlements] }
+  end
+
+  UI.user_error!("sd_ios_app: team_id is required.") if team_id.to_s.empty?
+  UI.user_error!("sd_ios_app: flavors must not be empty.") if flavors.to_a.empty?
+
+  SD_IOS_APP_STORE.replace(
+    team_id: team_id.to_s,
+    targets: normalized,
+    flavors: flavors.map(&:to_s),
+    script_tools: script_tools.to_s,
+    design_system: design_system.to_s,
+  )
+end
+
+# The declared config, or a failure naming the one line that is missing. Every
+# lane reaches the app through this and never through a constant, so an app
+# that forgot the call is told so instead of dying on `uninitialized constant`.
+def sd_app
+  if SD_IOS_APP_STORE.empty?
+    UI.user_error!(
+      "No sd_ios_app(...) in ios/fastlane/Fastfile. The shared lanes cannot know the bundle ids, " \
+      "the team or the targets without it.",
+    )
+  end
+  SD_IOS_APP_STORE
+end
+
+# The app's own bundle id — the first target. Extensions are never it.
+def sd_app_identifier
+  sd_app[:targets].first[:bundle_id]
+end
+
+# Every bundle id in the archive: the app and its extensions. match provisions
+# all of them, and the export plist must name all of them.
+def sd_bundle_ids
+  sd_app[:targets].map { |target| target[:bundle_id] }
+end
+
+def sd_team_id
+  sd_app[:team_id]
+end
+
+# ---------------------------------------------------------------------------
+# The lanes
+# ---------------------------------------------------------------------------
+
+platform :ios do
+  desc "Build through script-tools flutter/build_ipa.sh and upload to TestFlight. flavor: dev|prod, bump: true|false, notes: a line for What to Test"
+  lane :beta do |options|
+    flavor = sd_validate_flavor!((options[:flavor] || sd_app[:flavors].last).to_s)
+
+    bump = options[:bump].to_s != "false"
+    # `notes:` locally, RELEASE_NOTES from the workflow — free text with
+    # spaces in it cannot survive a lane argument on a shell command line.
+    notes = (options[:notes] || ENV["RELEASE_NOTES"]).to_s.strip
+
+    root = sd_repo_root
+
+    # First, before the network and long before the build. `flavor` picks
+    # env/<flavor>.json and nothing else; the Firebase project the app really
+    # talks to comes from the native files `flutter/prepare_env.sh <flavor>`
+    # copied into the tree, and nothing ties the two together. So
+    # `prepare-env-dev` followed by `beta flavor:prod` uploads an app that
+    # writes into the wrong Firestore — and it RUNS, so nothing downstream
+    # ever says a word. This is the last place that can.
+    sd_verify_flavor_config(root, flavor)
+
+    key = sd_asc_api_key
+
+    # Resolved BEFORE the build, either way — an iOS build is the expensive
+    # half of this lane, and both the bump and the guard are answered by the
+    # same question App Store Connect will ask at the end.
+    version, build = sd_pubspec_version(root)
+    latest = latest_testflight_build_number(
+      api_key: key,
+      app_identifier: sd_app_identifier,
+      version: version,
+      initial_build_number: 0,
+    )
+
+    if bump
+      # The number is written INTO pubspec.yaml and committed back after the
+      # upload — never passed as `--build-number`. That flag would ship a build
+      # whose version exists nowhere in git, and the repo could no longer say
+      # what went out; see docs/rules/COMMANDS.md. Writing the file keeps that
+      # property and still spares a human from remembering.
+      #
+      # Taken from TestFlight rather than from pubspec alone: App Store Connect
+      # refuses a build number it has already seen for this version, and it has
+      # seen builds from every branch that ever ran this lane.
+      build = ([build.to_i, latest.to_i].max + 1).to_s
+      sd_set_pubspec_build_number(root, version, build)
+      UI.message("Building #{version}+#{build} (TestFlight was at #{latest}).")
+    elsif build.to_i <= latest.to_i
+      UI.user_error!(
+        "pubspec.yaml is at #{version}+#{build}, but TestFlight already has build " \
+        "#{latest} for #{version}. Bump `version:` in pubspec.yaml, or run with bump:true.",
+      )
+    end
+
+    export_plist = nil
+
+    if is_ci
+      # A runner cannot sign automatically — that needs an Apple ID logged into
+      # Xcode. So the project is flipped to manual signing for this run only,
+      # against what match installs. The checkout is discarded afterwards, so
+      # the pbxproj edit never reaches git and a developer's machine keeps
+      # automatic signing.
+      #
+      # `sd_runner?`, not `is_ci`: the throwaway keychain is only right where
+      # there is no login keychain worth using, and a Mac running this with
+      # CI=true has one. See `sd_runner?` for what the extra keychain costs.
+      setup_ci if sd_runner?
+
+      match(
+        type: "appstore",
+        app_identifier: sd_bundle_ids,
+        api_key: key,
+        # The certificate is created once, by hand, with `fastlane certificates`.
+        # CI may never create one: a runner that can mint distribution certs
+        # burns through Apple's limit of three, one failed job at a time.
+        readonly: true,
+        **sd_git_authorization,
+      )
+
+      # Before the build, not during it. Xcode enforces the same rule — every
+      # entitlement the target claims must be authorized by its profile — but
+      # only once the whole target has compiled, so a profile minted before an
+      # entitlement was added costs three and a half minutes to say so. It
+      # cost exactly that when Sign in with Apple went in.
+      sd_verify_profile_entitlements(root)
+
+      sd_app[:targets].each do |target|
+        update_code_signing_settings(
+          path: "#{root}/ios/Runner.xcodeproj",
+          use_automatic_signing: false,
+          team_id: sd_team_id,
+          targets: [target[:name]],
+          bundle_identifier: target[:bundle_id],
+          profile_name: sd_installed_profile_name(target[:bundle_id]),
+          code_sign_identity: "Apple Distribution",
+          build_configurations: ["Release"],
+        )
+      end
+
+      # `flutter build ipa --export-method` makes Flutter generate the
+      # ExportOptions.plist itself, and that generator maps the MAIN bundle id
+      # only — its own source calls multi-target apps a TODO. An app extension
+      # would get no profile and `exportArchive` would fail after the full
+      # build. So write the plist here with every id in it; the script drops
+      # its `--export-method` when it sees this flag.
+      export_plist = sd_write_export_options_plist
+    end
+
+    command = ["bash", "#{sd_app[:script_tools]}/flutter/build_ipa.sh", flavor]
+    command << "--export-options-plist=#{export_plist}" if export_plist
+    Dir.chdir(root) { sh(*command) }
+
+    ipa = sd_built_ipa(root)
+    UI.user_error!("No IPA under build/ios/ipa — the build produced nothing.") if ipa.nil?
+
+    # The note is the only thing on a TestFlight build that says dev or prod —
+    # one bundle id serves both — so the shared helper composes one whenever
+    # the run did not supply its own, and no build goes up blank.
+    sd_upload_to_testflight(
+      api_key: key,
+      app_identifier: sd_app_identifier,
+      ipa: ipa,
+      flavor: flavor,
+      version: version,
+      build_number: build,
+      notes: notes,
+    )
+
+    # Crashlytics cannot symbolicate a crash without the dSYMs, and with bitcode
+    # gone nothing on Apple's side uploads them. Best effort on purpose: the
+    # build is already on TestFlight by now, and a symbol upload that fails must
+    # not take the build-number commit down with it. It says so loudly instead.
+    sd_upload_dsyms(root)
+
+    # Pushed AFTER the upload, on purpose. A bump commit for a build that never
+    # shipped is only a gap in the numbering; a build on TestFlight whose
+    # number is in no commit is the thing this whole rule exists to prevent.
+    # If the push fails here the job fails loudly with the build already up —
+    # commit the number by hand rather than releasing over it.
+    sd_commit_build_number(root, version, build) if bump && is_ci
+
+    UI.success("Uploaded #{flavor} #{version}+#{build} to TestFlight.")
+  end
+
+  desc "Upload an IPA that is already in build/ios/ipa, without rebuilding. flavor: dev|prod. For a build that succeeded and an upload that did not."
+  lane :upload do |options|
+    # The recovery path for `beta` dying after the twenty-five minute build:
+    # a network drop, an expired token, a rejected binary. The IPA on disk is
+    # the one that was built, so nothing here builds, bumps or signs — doing
+    # any of it would produce a DIFFERENT binary and the one on disk would
+    # still be unuploaded.
+    flavor = sd_validate_flavor!((options[:flavor] || sd_app[:flavors].last).to_s)
+    notes = (options[:notes] || ENV["RELEASE_NOTES"]).to_s.strip
+
+    root = sd_repo_root
+    sd_verify_flavor_config(root, flavor)
+
+    ipa = sd_built_ipa(root)
+    UI.user_error!("No IPA under build/ios/ipa. Build one first: #{sd_app[:script_tools]}/flutter/release_ios.sh #{flavor}.") if ipa.nil?
+
+    # pubspec is the number the binary carries: `beta` writes it there BEFORE
+    # the build, so the file and the IPA agree unless someone edited it in
+    # between — which would make the note lie about the build it describes.
+    version, build = sd_pubspec_version(root)
+    key = sd_asc_api_key
+    latest = latest_testflight_build_number(
+      api_key: key,
+      app_identifier: sd_app_identifier,
+      version: version,
+      initial_build_number: 0,
+    )
+    if build.to_i <= latest.to_i
+      UI.user_error!(
+        "TestFlight already has build #{latest} for #{version}, and this IPA is #{build}. " \
+        "It was uploaded already, or it needs rebuilding with a higher number.",
+      )
+    end
+
+    sd_upload_to_testflight(
+      api_key: key,
+      app_identifier: sd_app_identifier,
+      ipa: ipa,
+      flavor: flavor,
+      version: version,
+      build_number: build,
+      notes: notes,
+    )
+
+    sd_upload_dsyms(root)
+
+    UI.success("Uploaded #{flavor} #{version}+#{build} to TestFlight.")
+  end
+
+  desc "Everything a release depends on except the build. flavor:dev|prod also checks the config in the tree. Rehearse the runner with CI=true."
+  lane :preflight do |options|
+    # The release lane's first three minutes, without the twenty-five that
+    # follow. Every credential failure met so far — a rejected token, a
+    # newline inside the auth header, a second empty Authorization header —
+    # lands in here, and none of them needs an IPA to surface.
+    #
+    # Locally this skips match, because a developer's Mac signs automatically
+    # and has no reason to touch the shared certificate. `CI=true` turns that
+    # branch on and rehearses what the runner will do, in seconds — into the
+    # login keychain, since `setup_ci` is gated on `sd_runner?` and a Mac keeps
+    # the keychain it already has:
+    #
+    #   cd ios && CI=true bundle exec fastlane preflight
+    #
+    # To reproduce the runner's environment exactly, set the same variables it
+    # sets — including the ones whose secrets do not exist, which is precisely
+    # how the duplicate-header failure happened:
+    #
+    #   CI=true MATCH_GIT_BEARER_AUTHORIZATION= bundle exec fastlane preflight
+    root = sd_repo_root
+
+    # Optional, and skipped rather than defaulted when absent: defaulting to
+    # prod would fail a rehearsal on a machine set up for dev, over the one
+    # question the rehearsal was not asked.
+    flavor = options[:flavor].to_s
+    if flavor.empty?
+      UI.important("No flavor: given, so the config in the tree was not checked. Pass flavor:#{sd_app[:flavors].join(' or flavor:')} for that.")
+    else
+      sd_verify_flavor_config(root, sd_validate_flavor!(flavor))
+    end
+
+    key = sd_asc_api_key
+
+    version, build = sd_pubspec_version(root)
+    latest = latest_testflight_build_number(
+      api_key: key,
+      app_identifier: sd_app_identifier,
+      version: version,
+      initial_build_number: 0,
+    )
+    UI.success("App Store Connect answered. pubspec is #{version}+#{build}, TestFlight is at #{latest}.")
+
+    unless is_ci
+      UI.important("Not CI, so match was skipped — that is the half most likely to break.")
+      UI.important("Rehearse it with: CI=true bundle exec fastlane preflight")
+      next
+    end
+
+    setup_ci if sd_runner?
+    match(
+      type: "appstore",
+      app_identifier: sd_bundle_ids,
+      api_key: key,
+      readonly: true,
+      **sd_git_authorization,
+    )
+    UI.success("Profiles installed: #{sd_bundle_ids.map { |id| sd_installed_profile_name(id) }.join(', ')}")
+
+    sd_verify_profile_entitlements(root)
+    UI.success("Every profile carries the entitlements its target claims.")
+  end
+
+  desc "Create or renew the distribution certificate and every profile. Local only. force:true regenerates them."
+  lane :certificates do |options|
+    # CI runs match readonly, so the certificate has to be minted from a real
+    # machine once — and renewed from one when it expires.
+    UI.user_error!("Run this on your Mac. CI uses readonly: true on purpose.") if is_ci
+
+    # An existing profile is REUSED by default, and that is the trap behind
+    # every "profile doesn't include the … entitlement": adding a capability
+    # to the App ID does not touch a profile Apple already issued, and match
+    # sees one in its repo and installs it unchanged. force:true regenerates
+    # them all from the App IDs as they stand now and pushes them to the
+    # certificates repo, which is the only way CI's readonly match can ever
+    # see the new entitlement.
+    #
+    #   cd ios && bundle exec fastlane certificates force:true
+    #
+    # It does NOT touch the certificate — only the profiles — so the limit of
+    # three distribution certificates is not at risk here.
+    force = options[:force].to_s == "true"
+    match(type: "appstore", app_identifier: sd_bundle_ids, api_key: sd_asc_api_key, force: force)
+  end
+end
+
+# ---------------------------------------------------------------------------
+# TestFlight
+# ---------------------------------------------------------------------------
+
+# The locale a build note is stored under. App Store Connect keeps one note per
+# locale, and this is the primary locale every app here ships with.
+SD_RELEASE_NOTE_LOCALE = "en-US"
+
+# `dev - 1.0.0 (20)` — the environment, the version name and the version
+# number, which together are everything the TestFlight list does not show.
+def sd_release_note(flavor, version, build_number)
+  "#{flavor} - #{version} (#{build_number})"
+end
+
+# Upload, always with a note. The composed line always LEADS and the caller's
+# own text is appended under it — it never replaces it. The flavour and the
+# number are what the TestFlight list cannot show, so a run that passes
+# `notes:` is asking for something to be looked at, not asking for the one line
+# that says which build this is to be dropped.
+#
+# The note travels as `localized_build_info`, never as `changelog`. Both reach
+# the same field, but `changelog` only PATCHES the build localizations that
+# already exist — and a build just uploaded has none, so the note is dropped
+# without a word. Naming the locale is what makes pilot create one.
+#
+# Waiting for processing is the price of the note: App Store Connect accepts
+# one only once the build has finished processing.
+def sd_upload_to_testflight(api_key:, app_identifier:, ipa:, flavor:, version:, build_number:, notes: nil)
+  extra = notes.to_s.strip
+  line = sd_release_note(flavor, version, build_number)
+  note = extra.empty? ? line : "#{line}\n\n#{extra}"
+
+  UI.message("TestFlight note: #{note}")
+
+  upload_to_testflight(
+    api_key: api_key,
+    # Named rather than left to the Appfile: the lane already passes this
+    # bundle id to every other action it runs, and one action reading it from
+    # somewhere else is one place a two-app repo can upload into the wrong
+    # record.
+    app_identifier: app_identifier,
+    ipa: ipa,
+    skip_waiting_for_build_processing: false,
+    localized_build_info: { SD_RELEASE_NOTE_LOCALE => { whats_new: note } },
+    distribute_external: false,
+    skip_submission: true
+  )
+
+  note
+end
+
+# The IPA `build-ipa.sh` just produced, or nil. That script wipes build/ios/ipa
+# before every build, so this glob matches exactly one file and it is the one
+# just built.
+def sd_built_ipa(root)
+  Dir["#{root}/build/ios/ipa/*.ipa"].first
+end
+
+# Sends the archive's dSYMs to Crashlytics, or explains why it could not.
+#
+# Two of fastlane's defaults do not hold for an app built this way:
+#   - the action looks for `Pods/FirebaseCrashlytics/upload-symbols`, and
+#     Firebase resolves through Swift Package Manager here, so that path does
+#     not exist. The binary ships as a package artifact under DerivedData in a
+#     folder whose name carries a build-specific hash — hence searched for,
+#     never hardcoded.
+#   - `gsp_path` is not available either: ios/Runner/GoogleService-Info.plist
+#     is gitignored and absent from a CI checkout. The app id arrives as an env
+#     var instead, which also keeps this lane from parsing env/*.json.
+#
+# Every exit is a warning and a return, never a raise. Missing symbols are
+# something to go and fix; they are not a reason to re-cut a build that is
+# already on TestFlight.
+def sd_upload_dsyms(root)
+  app_id = ENV["FIREBASE_APP_ID_IOS"]
+  if app_id.nil? || app_id.empty?
+    UI.important("FIREBASE_APP_ID_IOS is unset — skipping the Crashlytics symbol upload.")
+    return
+  end
+
+  dsyms = "#{root}/build/ios/archive/Runner.xcarchive/dSYMs"
+  unless Dir.exist?(dsyms)
+    UI.important("No dSYMs at #{dsyms} — skipping the Crashlytics symbol upload.")
+    return
+  end
+
+  binary = Dir.glob(File.expand_path("~/Library/Developer/Xcode/DerivedData/Runner-*/SourcePackages/artifacts/**/upload-symbols")).first
+  if binary.nil?
+    UI.important("Crashlytics upload-symbols is not under DerivedData — skipping the symbol upload.")
+    return
+  end
+
+  upload_symbols_to_crashlytics(dsym_path: dsyms, app_id: app_id, binary_path: binary)
+rescue StandardError => e
+  UI.important("Crashlytics symbol upload failed, the build is still up: #{e.message}")
+end
+
+# ---------------------------------------------------------------------------
+# The repo: where it is, what version it is at, what shipped
+# ---------------------------------------------------------------------------
+
+# True only on an actual GitHub runner, which is a narrower question than
+# `is_ci`.
+#
+# `is_ci` is true on any machine with CI set — including a Mac rehearsing the
+# release with `CI=true bundle exec fastlane preflight`, which is exactly what
+# the docs tell a developer to run. And `setup_ci` on a Mac creates
+# `~/Library/Keychains/fastlane_tmp_keychain-db`, adds it to the keychain
+# SEARCH LIST, and never takes it out again: on a runner the whole machine is
+# discarded, on a laptop it stays for good. match then imports the shared
+# certificate into it, so the same certificate lives in two keychains and
+# `security find-identity -v -p codesigning` starts reporting four "Apple
+# Distribution" identities where there is one — an identity being a
+# (certificate, private key) pair, and the search pairing either copy of the
+# cert with either copy of the key. Each of those is one more key codesign can
+# stop and ask about at `exportArchive`.
+#
+# So the throwaway keychain is a runner's answer to having no login keychain
+# worth using, and a Mac already has one. Everything else about the rehearsal
+# is unchanged: match still runs, still readonly, and installs into the
+# keychain that is already there.
+def sd_runner?
+  !ENV["GITHUB_ACTIONS"].to_s.empty?
+end
+
+# Lanes run with the working directory set to `ios/fastlane`, so the repo root
+# is two levels up. Checked rather than assumed: every path below is built from
+# it, and a wrong root would fail much later with something unrecognisable.
+def sd_repo_root
+  root = File.expand_path("../..", Dir.pwd)
+  UI.user_error!("No pubspec.yaml at #{root} — fastlane is not where it thinks it is.") unless File.exist?("#{root}/pubspec.yaml")
+  root
+end
+
+# Returns ["1.0.0", "12"] from `version: 1.0.0+12`.
+def sd_pubspec_version(root)
+  raw = sd_read_pubspec(root)[/^version:\s*(\S+)/, 1]
+  UI.user_error!("pubspec.yaml has no `version:` line.") if raw.nil?
+
+  name, build = raw.split("+")
+  UI.user_error!("pubspec.yaml version #{raw} carries no +build number.") if build.nil?
+
+  [name, build]
+end
+
+# The encoding is stated, never inherited. pubspec.yaml holds em dashes, and
+# Ruby with no UTF-8 locale reads it as US-ASCII — then the first regex against
+# it dies with "invalid byte sequence in US-ASCII", a failure that names the
+# encoding and not the missing LANG, and a runner is exactly the stripped
+# environment that has no locale set.
+def sd_read_pubspec(root)
+  File.read("#{root}/pubspec.yaml", encoding: "UTF-8")
+end
+
+# Rewrites the `version:` line, keeping the name and replacing the +build.
+def sd_set_pubspec_build_number(root, version_name, build)
+  before = sd_read_pubspec(root)
+  after = before.sub(/^version:\s*\S+$/, "version: #{version_name}+#{build}")
+  UI.user_error!("Could not rewrite the `version:` line in pubspec.yaml.") if after == before
+  File.write("#{root}/pubspec.yaml", after, encoding: "UTF-8")
+end
+
+# Commits the bumped pubspec.yaml, and both submodule gitlinks, back to the
+# branch the workflow ran on.
+#
+# Two paths and no others: on CI the checkout is also carrying a pbxproj
+# switched to manual signing and an env/*.json written from a secret, and
+# neither may ever reach a commit.
+#
+# The gitlink is in there because the workflow follows the design system's
+# branch rather than the commit the parent pins. Without recording where that
+# branch was, the IPA on TestFlight would contain a design system commit the
+# app repo never wrote down — and "what went out" would be unanswerable for
+# half the UI, which is the same failure the build-number rule exists to
+# prevent.
+#
+# `[skip ci]` keeps the push from starting the analyze-and-test workflow over a
+# version bump that has already been built and shipped.
+def sd_commit_build_number(root, version_name, build)
+  branch = ENV["GITHUB_REF_NAME"]
+  UI.user_error!("GITHUB_REF_NAME is unset — no branch to push the bump to.") if branch.nil? || branch.empty?
+
+  message = "chore: release - build #{version_name}+#{build} [skip ci]"
+
+  # The design system's commit is named in the message as well as staged in the
+  # tree. That is deliberate duplication, and the only kind worth keeping: a
+  # gitlink shows up in neither `git log --oneline` nor a GitHub commit list,
+  # so the one place someone actually looks when asking "what shipped in 14?"
+  # is the one place the answer was missing. The tree remains the authority;
+  # the message is the copy that gets read.
+  design = sd_design_system_commit(root)
+  message += "\n\nBuilt against #{File.basename(sd_app[:design_system])} #{design}" if design
+
+  Dir.chdir(root) do
+    sh("git", "add", "pubspec.yaml", sd_app[:design_system], sd_app[:script_tools])
+    sh("git", "commit", "-m", message)
+    sh("git", "push", "origin", "HEAD:refs/heads/#{branch}")
+  end
+end
+
+# The design system's HEAD as `<short sha> <subject>`, or nil if the submodule
+# is not there to ask — a missing line in a commit message is not worth failing
+# a release that has already shipped.
+def sd_design_system_commit(root)
+  out = `git -C "#{root}/#{sd_app[:design_system]}" log -1 --format='%h %s' 2>/dev/null`.strip
+  out.empty? ? nil : out
+end
+
+# ---------------------------------------------------------------------------
+# Credentials
+# ---------------------------------------------------------------------------
+
+# App Store Connect API key, from a file locally and from a secret in CI.
+# Base64 on the CI side because the .p8 is multi-line and a secret that loses
+# its newlines fails as an unreadable key rather than as a missing one.
+def sd_asc_api_key
+  common = { key_id: ENV.fetch("ASC_KEY_ID"), issuer_id: ENV.fetch("ASC_ISSUER_ID") }
+
+  content = ENV["ASC_KEY_CONTENT"]
+  if content && !content.empty?
+    app_store_connect_api_key(**common, key_content: content, is_key_content_base64: true)
+  else
+    app_store_connect_api_key(**common, key_filepath: ENV.fetch("ASC_KEY_FILEPATH"))
+  end
+end
+
+# How the runner authenticates to the private certificates repo.
+#
+# GitHub accepts either header form for a personal access token. Bearer takes
+# the token verbatim; Basic wants base64 of "user:token", which is one more
+# step to get wrong — and getting it wrong fails as `could not read Username
+# for 'https://github.com'`, a message about prompts that says nothing about
+# the credential being rejected.
+#
+# The empty ones are DELETED from the environment, not merely left unpassed.
+# match reads both env vars itself, whichever option this method returns, so
+# picking one here does not stop the other from being used. Actions sets every
+# `${{ secrets.X }}` it is handed — empty string included, for a secret that
+# does not exist — and an empty one becomes a SECOND `Authorization` header.
+# Git sends both, and GitHub answers `Duplicate header: "Authorization"` with a
+# 400 that names neither the empty variable nor the workflow that set it.
+def sd_git_authorization
+  %w[MATCH_GIT_BEARER_AUTHORIZATION MATCH_GIT_BASIC_AUTHORIZATION].each do |name|
+    ENV.delete(name) if ENV[name].to_s.empty?
+  end
+
+  bearer = ENV["MATCH_GIT_BEARER_AUTHORIZATION"]
+  return { git_bearer_authorization: bearer } if bearer
+
+  basic = ENV["MATCH_GIT_BASIC_AUTHORIZATION"]
+  return { git_basic_authorization: basic } if basic
+
+  UI.user_error!("Set MATCH_GIT_BEARER_AUTHORIZATION (the PAT as-is) or MATCH_GIT_BASIC_AUTHORIZATION (base64 of user:PAT).")
+end
+
+# ---------------------------------------------------------------------------
+# Signing: profiles, entitlements, export options
+# ---------------------------------------------------------------------------
+
+# The profile match just installed for one bundle id. match publishes the
+# mapping in the lane context; the sigh env var is the older channel for the
+# same thing and covers a match version that stops setting the context.
+def sd_installed_profile_name(bundle_id)
+  mapping = lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING] || {}
+  name = mapping[bundle_id] || mapping[bundle_id.to_sym] || ENV["sigh_#{bundle_id}_appstore_profile-name"]
+  UI.user_error!("match installed no App Store profile for #{bundle_id}.") if name.nil?
+  name
+end
+
+# Fails the lane if a target claims an entitlement its installed profile does
+# not carry — the check Xcode performs at signing, run before the compile
+# instead of after it.
+#
+# Key presence only, never values. `aps-environment` is "development" in the
+# entitlements file and "production" in an App Store profile, on purpose, so
+# comparing values would fail every build. Xcode reconciles those; what it
+# cannot reconcile is a key the profile has never heard of, and that is the
+# only thing checked here.
+#
+# The remedy is always the same two steps, and neither is in the app repo:
+# add the capability to the App ID in the developer portal, then regenerate
+# the profiles with `fastlane certificates force:true` from a Mac. CI's match
+# is readonly and can only install what is already in the certificates repo.
+def sd_verify_profile_entitlements(root)
+  sd_app[:targets].each do |target|
+    entitlements = target[:entitlements]
+    next if entitlements.nil? || entitlements.to_s.empty?
+
+    bundle_id = target[:bundle_id]
+    claimed = sd_plist_keys("#{root}/ios/#{entitlements}")
+    granted = sd_profile_entitlement_keys(bundle_id)
+    next if granted.nil?
+
+    missing = claimed - granted
+    next if missing.empty?
+
+    UI.user_error!(
+      "Profile \"#{sd_installed_profile_name(bundle_id)}\" does not carry #{missing.join(', ')}, " \
+      "which #{entitlements} claims. Enable the capability on App ID #{bundle_id} in the " \
+      "developer portal, then run `bundle exec fastlane certificates force:true` on your Mac.",
+    )
+  end
+end
+
+# The entitlement keys of the profile sigh just installed for one bundle id, or
+# nil when the profile cannot be found or read. Nil skips the check rather than
+# failing it: this guard exists to explain a build that was going to fail
+# anyway, and it must never be the reason a good build does not go out.
+def sd_profile_entitlement_keys(bundle_id)
+  path = ENV["sigh_#{bundle_id}_appstore_profile-path"]
+  if path.nil? || !File.exist?(path)
+    UI.important("No installed profile file for #{bundle_id} — skipping the entitlement check.")
+    return nil
+  end
+
+  # A .mobileprovision is a CMS-signed plist; `security cms -D` unwraps it.
+  decoded = File.join(Dir.mktmpdir("sd-profile"), "profile.plist")
+  sh("security cms -D -i #{path.shellescape} > #{decoded.shellescape}", log: false)
+  sd_plist_keys(decoded, "Entitlements")
+rescue StandardError => e
+  UI.important("Could not read the profile for #{bundle_id} (#{e.message}) — skipping the entitlement check.")
+  nil
+end
+
+# One ExportOptions.plist covering every target. `provisioningProfiles` takes
+# profile names, and every bundle id in the archive must appear or the export
+# fails on the one that is missing.
+def sd_write_export_options_plist
+  entries = sd_bundle_ids.map do |bundle_id|
+    "            <key>#{bundle_id}</key>\n            <string>#{sd_installed_profile_name(bundle_id)}</string>"
+  end.join("\n")
+
+  path = File.join(Dir.mktmpdir("sd-export"), "ExportOptions.plist")
+  File.write(path, <<~PLIST)
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+        <key>method</key>
+        <string>app-store</string>
+        <key>teamID</key>
+        <string>#{sd_team_id}</string>
+        <key>signingStyle</key>
+        <string>manual</string>
+        <key>provisioningProfiles</key>
+        <dict>
+    #{entries}
+        </dict>
+        <key>uploadBitcode</key>
+        <false/>
+        <key>stripSwiftSymbols</key>
+        <true/>
+    </dict>
+    </plist>
+  PLIST
+
+  path
+end
+
+# ---------------------------------------------------------------------------
+# The config in the tree: does it belong to the flavor being shipped?
+# ---------------------------------------------------------------------------
+
+# One of the flavors the app declared, or the lane stops here. Every lane asks
+# it, and the answer indexes .firebaserc, env/ and env_assets/ alike.
+def sd_validate_flavor!(flavor)
+  flavors = sd_app[:flavors]
+  UI.user_error!("flavor must be one of #{flavors.join(', ')}, got #{flavor.inspect}") unless flavors.include?(flavor)
+  flavor
+end
+
+# Fails the lane unless the config sitting in the tree belongs to the flavor
+# being uploaded.
+#
+# Everything it reads is either committed or already shipping inside the IPA —
+# never env/. `.firebaserc` is the authority on which project a flavor means
+# because it is the same file `firebase deploy` reads: one place to change when
+# a project id does, and no second list to forget.
+#
+# An app with no `.firebaserc` runs no Firebase backend and has nothing here to
+# check — the same question `release.sh` asks before its deploy step. The skip
+# is announced by name; it is never silent.
+def sd_verify_flavor_config(root, flavor)
+  unless File.exist?("#{root}/.firebaserc")
+    UI.important("No .firebaserc — this app runs no Firebase backend, so there is no flavored config to check.")
+    return
+  end
+
+  expected = sd_firebaserc_project(root, flavor)
+
+  gsp = "#{root}/ios/Runner/GoogleService-Info.plist"
+  unless File.exist?(gsp)
+    UI.user_error!("#{gsp} is missing. Run `bash #{sd_app[:script_tools]}/flutter/prepare_env.sh #{flavor}`, or download it from the Firebase console.")
+  end
+
+  project = sd_plist_value(gsp, "PROJECT_ID")
+  if project != expected
+    UI.user_error!(
+      "GoogleService-Info.plist is #{project.inspect}, but flavor #{flavor} means #{expected.inspect} " \
+      "(.firebaserc). The tree is set up for the other environment — run " \
+      "`bash #{sd_app[:script_tools]}/flutter/prepare_env.sh #{flavor}` and start again.",
+    )
+  end
+
+  bundle_id = sd_plist_value(gsp, "BUNDLE_ID")
+  if bundle_id != sd_app_identifier
+    UI.user_error!("GoogleService-Info.plist is registered to #{bundle_id.inspect}, not #{sd_app_identifier} — that is another app's file.")
+  end
+
+  sd_verify_sign_in_url_scheme(root, gsp, flavor)
+  sd_verify_crashlytics_app_id(gsp)
+
+  UI.success("Config check: #{flavor} is #{expected}, and the tree matches it.")
+end
+
+# The project id a flavor stands for, from the file the Firebase CLI already
+# uses for the same mapping.
+def sd_firebaserc_project(root, flavor)
+  path = "#{root}/.firebaserc"
+  projects = JSON.parse(File.read(path, encoding: "UTF-8"))["projects"] || {}
+  id = projects[flavor].to_s
+  UI.user_error!(".firebaserc has no `#{flavor}` alias. It has: #{projects.keys.join(', ')}.") if id.empty?
+  id
+end
+
+# The Google sign-in callback returns on a URL scheme that is the reversed
+# client id of ONE Firebase project, and it lives in Info.plist — a second
+# copy of something GoogleService-Info.plist already says. `prepare-env.sh`
+# writes both, so they part company only when one of them is stale, and then
+# the app builds, installs, opens the Google sheet and never gets the callback
+# back. Nothing about that failure names a plist.
+#
+# Searched as text, not through PlistBuddy: CFBundleURLTypes is an array of
+# dicts with no key addressing the right one, and a reversed client id is
+# unique enough that its presence anywhere in the file is the whole question.
+def sd_verify_sign_in_url_scheme(root, gsp, flavor)
+  reversed = sd_plist_value(gsp, "REVERSED_CLIENT_ID").to_s
+  if reversed.empty?
+    UI.important("GoogleService-Info.plist carries no REVERSED_CLIENT_ID — skipping the sign-in URL scheme check.")
+    return
+  end
+
+  info_plist = "#{root}/ios/Runner/Info.plist"
+  return if File.read(info_plist, encoding: "UTF-8").include?(reversed)
+
+  UI.user_error!(
+    "ios/Runner/Info.plist does not carry #{reversed}, the sign-in URL scheme of the " \
+    "#{flavor} Firebase project. Google sign-in would build fine and never receive its " \
+    "callback. Run `bash #{sd_app[:script_tools]}/flutter/prepare_env.sh #{flavor}`.",
+  )
+end
+
+# dSYMs go wherever FIREBASE_APP_ID_IOS points, and that one is a CI secret
+# rather than something read from the build — so it is the only value here
+# that can name the other project while everything in the tree is right. The
+# upload then succeeds and puts the symbols where no crash will look for them.
+# Unset is fine and stays fine: `sd_upload_dsyms` skips with a warning.
+def sd_verify_crashlytics_app_id(gsp)
+  configured = ENV["FIREBASE_APP_ID_IOS"].to_s
+  return if configured.empty?
+
+  expected = sd_plist_value(gsp, "GOOGLE_APP_ID").to_s
+  return if expected.empty? || configured == expected
+
+  UI.user_error!(
+    "FIREBASE_APP_ID_IOS is not this project's iOS app id — GoogleService-Info.plist says " \
+    "#{expected}. Crashlytics symbols would go to the wrong Firebase app.",
+  )
+end
+
+# ---------------------------------------------------------------------------
+# plists, read with PlistBuddy so no gem has to be added for it
+# ---------------------------------------------------------------------------
+
+# The keys of a plist dict. `scope` names a nested dict; omitted, it reads the
+# root.
+def sd_plist_keys(path, scope = nil)
+  entry = scope ? ":#{scope}" : ""
+  out = sh("/usr/libexec/PlistBuddy -c 'Print #{entry}' #{path.shellescape}", log: false)
+  # PlistBuddy prints `Dict { \n    key = value \n ... }`; the keys are the
+  # names left of the first `=` at one level of indentation. Nested dicts and
+  # arrays indent further, so the depth filter is what keeps their contents out.
+  out.lines.map do |line|
+    next unless line.start_with?("    ") && !line.start_with?("        ")
+
+    name = line.strip.split(" = ", 2).first
+    name unless name.nil? || name.empty? || name == "}"
+  end.compact
+end
+
+# One value out of a plist, or nil when the key is not there.
+#
+# Backticks rather than `sh`, because the config check reads four keys before
+# every build and each `sh` prints its own step banner whether or not it is
+# asked to log — a dozen lines of noise in front of a lane whose real failures
+# come at the end.
+def sd_plist_value(path, key)
+  out = `/usr/libexec/PlistBuddy -c #{"Print :#{key}".shellescape} #{path.shellescape} 2>/dev/null`
+  $CHILD_STATUS.success? ? out.strip : nil
+end
