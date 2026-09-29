@@ -14,7 +14,7 @@ FLAVOR_ENV = $(if $(FLAVOR),FLAVOR=$(FLAVOR))
 .PHONY: help build install test lint apk aab sms clean
 
 help: ## List the targets
-	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sort -u | awk -F ':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
+	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sort -u | awk -F ':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
 
 build: ## Build the VARIANT APK
 	$(GRADLE) :$(APP_MODULE):assemble$(VARIANT)
