@@ -16,6 +16,7 @@ common/lib/         platform-independent helpers, sourced by platform scripts
 android/            scripts for Gradle Android projects
   build_release_apk.sh
   build_release_aab.sh
+  android.mk          make targets (build, test, lint, apk, aab, ...) for the project Makefile
   lib/release.sh      Gradle release build shared by the two scripts
 ```
 
@@ -58,3 +59,23 @@ Add `Release/` to the project's `.gitignore`.
 | `android/build_release_aab.sh` | `<project>/Release/<APP_NAME>[-<flavor>]-<versionName>-<versionCode>.aab` |
 
 Each script clears every build output, runs the unit tests, builds the release, replaces the previous file of the same format in `Release/`, and verifies the signature. Signing itself is the project's Gradle `signingConfig`; without the key file the output is reported as unsigned. `FLAVOR=<flavor>` picks a flavor.
+
+## Android make targets
+
+Project `Makefile` (paths relative to the project root, since make cannot handle spaces):
+
+```make
+SCRIPT_TOOLS := packages/script-tools
+# Variant for build/install/test/lint; default Debug.
+VARIANT := DevDebug
+include $(SCRIPT_TOOLS)/android/android.mk
+```
+
+| Target | Runs |
+| --- | --- |
+| `make` / `make help` | Lists the targets |
+| `make build` / `install` / `lint` | `:<APP_MODULE>:assemble/install/lint<VARIANT>` |
+| `make test [TEST=<ClassName>]` | `:<APP_MODULE>:test<VARIANT>UnitTest`, one class with `TEST` |
+| `make apk [FLAVOR=<flavor>]` / `make aab` | `android/build_release_apk.sh` / `build_release_aab.sh` |
+| `make sms SENDER=<number> BODY="<text>"` | `adb emu sms send` to the running emulator |
+| `make clean` | `./gradlew clean` |
