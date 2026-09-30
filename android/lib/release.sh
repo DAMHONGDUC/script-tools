@@ -2,7 +2,7 @@
 # Gradle release build shared by build_release_apk.sh and build_release_aab.sh. Source this file.
 #
 # Clears every build output, runs unit tests, builds the signed release, and replaces the previous file of the
-# same format in <project>/Release/. Settings come from <project>/script-tools.properties (see README.md).
+# same flavor and format in <project>/Release/. Settings come from <project>/script-tools.properties (see README.md).
 set -euo pipefail
 
 android_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -89,8 +89,10 @@ build_android_release() {
   local version_name version_code result
   version_name="$(read_property "$version_file" versionName)"
   version_code="$(read_property "$version_file" versionCode)"
+  # The flavor leads the name so each flavor keeps its own latest file.
   result="$(publish_release_file "$root" "$artifact" \
-    "${app_name}${flavor:+-$flavor}${version_name:+-$version_name}${version_code:+-$version_code}" "$format")"
+    "${flavor:+$flavor-}${app_name}${version_name:+-$version_name}${version_code:+-$version_code}" "$format" \
+    "${flavor:+$flavor-}")"
 
   echo "==> 4/4 Verifying signature"
   if [ ! -f "$key_properties" ]; then
