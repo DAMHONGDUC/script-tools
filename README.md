@@ -90,6 +90,8 @@ include $(SCRIPT_TOOLS)/android/android.mk
 
 ## Flutter scripts
 
+Setting up a new project: [`flutter/ADOPTION_SPEC.md`](flutter/ADOPTION_SPEC.md).
+
 Run from the project root (or set `PROJECT_ROOT`); each finds the nearest `pubspec.yaml` and works there. Flavored scripts accept only a flavor listed in `FLAVORS`.
 
 | Script | Does |
