@@ -139,6 +139,8 @@ checkout with `not our ref`.
 
 ## 7. Migrating from the old tool/ + melos setup
 
+Step by step, with the full rename list: `MIGRATE_FROM_SYSTEM_DESIGN.md`.
+
 | Before | After |
 |---|---|
 | `packages/system_design/tool/*.sh` | `packages/script-tools/flutter/*.sh` (`set-up.sh` → `set_up.sh`, `gen.sh` → `generate_code.sh`, `build-ipa.sh` → `build_ipa.sh`, …) |
