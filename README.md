@@ -25,6 +25,9 @@ flutter/            scripts for Flutter apps (iOS release via fastlane, Firebase
   lib/common.sh       project root, fvm-aware FL/DT, flavor and project checks
   dart/               Dart package for the icon image tools (bin/*.dart)
   fastlane/Fastfile   shared iOS lanes: beta, upload, preflight, certificates
+ios/                scripts for native Xcode projects
+  reset_xcode.sh      deep reset of the project's Xcode state
+  ios.mk              make targets for the project Makefile
 ```
 
 Conventions for new scripts:
@@ -55,6 +58,13 @@ ANDROID_APP_MODULE=app
 ANDROID_TEST_TASKS=:app:test{Flavor}DebugUnitTest
 # Release signing file the Gradle signingConfig reads; the scripts only check that it exists.
 ANDROID_KEY_PROPERTIES=env/key.properties
+
+# Xcode project in the root; default: the only *.xcodeproj there.
+IOS_PROJECT=MyApp.xcodeproj
+# Scheme used to resolve packages; default: the project name.
+IOS_SCHEME=MyApp
+# Folder of local Swift packages whose .build/ and .swiftpm/ are cleared; default: Packages.
+IOS_PACKAGES_DIR=Packages
 ```
 
 Add `Release/` to the project's `.gitignore`.
@@ -147,3 +157,25 @@ include $(SCRIPT_TOOLS)/flutter/flutter.mk
 | `make app-icon` / `app-icon-strip-marker` | `generate_app_icon.sh` / `strip_icon_marker.sh` |
 
 `flutter.mk` and `android.mk` both define `help` and `test`; include one per Makefile.
+
+## iOS scripts
+
+Run from the project root (or set `PROJECT_ROOT`); the root is the nearest folder holding `project.yml` or `script-tools.properties`.
+
+| Script | Does |
+| --- | --- |
+| `ios/reset_xcode.sh [--all]` | Quit Xcode, delete the project's DerivedData, `build/` and every local package's `.build/` / `.swiftpm/`, run `xcodegen` when `project.yml` exists, resolve packages, reopen the project; `--all` also clears the global SwiftPM cache and the project's Xcode user state |
+
+## iOS make targets
+
+```make
+SCRIPT_TOOLS := packages/script-tools
+include $(SCRIPT_TOOLS)/ios/ios.mk
+```
+
+| Target | Runs |
+| --- | --- |
+| `make` / `make help` | Lists the targets |
+| `make reset-xcode` / `deep-reset-xcode` | `reset_xcode.sh` / `reset_xcode.sh --all` |
+
+`ios.mk` defines `help` like the others; include one platform file per Makefile.
