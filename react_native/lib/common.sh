@@ -24,6 +24,35 @@ rn_ios_workspace() {
   printf '%s\n' "$workspace"
 }
 
+# The Apple team: IOS_TEAM_ID from the environment, ios/fastlane/.env or script-tools.properties, else the
+# team of the one valid Apple Distribution identity in the keychain.
+rn_ios_team_id() {
+  local root="$1" team teams
+  team="${IOS_TEAM_ID:-$(read_property "$root/ios/fastlane/.env" IOS_TEAM_ID "")}"
+  team="${team:-$(project_setting "$root" IOS_TEAM_ID "")}"
+  if [ -z "$team" ]; then
+    teams="$(security find-identity -v -p codesigning 2>/dev/null \
+      | sed -nE 's/.*"Apple Distribution: .*\(([A-Z0-9]{10})\)"$/\1/p' | sort -u)"
+    case "$(printf '%s\n' "$teams" | grep -c .)" in
+      1) team="$teams" ;;
+      0) fail "No Apple Distribution identity in the keychain; set IOS_TEAM_ID in ios/fastlane/.env" ;;
+      *) fail "Several teams in the keychain ($(echo $teams)); set IOS_TEAM_ID in ios/fastlane/.env" ;;
+    esac
+  fi
+  printf '%s\n' "$team"
+}
+
+# Fails naming every key of <file> that is missing or empty, e.g. ios/fastlane/.env.
+# Usage: rn_require_keys <file> KEY...
+rn_require_keys() {
+  local file="$1" key missing=()
+  shift
+  for key in "$@"; do
+    [ -n "${!key:-$(read_property "$file" "$key" "")}" ] || missing+=("$key")
+  done
+  [ "${#missing[@]}" = 0 ] || fail "Missing in ${file##*/ios/}: ${missing[*]} (see fastlane/.env.example)"
+}
+
 # The bundle id: IOS_APP_IDENTIFIER, else the one PRODUCT_BUNDLE_IDENTIFIER in ios/*.xcodeproj.
 rn_ios_app_identifier() {
   local root="$1" id
