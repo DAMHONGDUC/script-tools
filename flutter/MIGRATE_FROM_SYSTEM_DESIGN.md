@@ -53,7 +53,7 @@ Apply in this order — longer patterns first — across `*.md`, `*.yml`,
 | `sh packages/system_design/tool/gen.sh` | `make gen` |
 | `sh packages/system_design/tool/test.sh` | `make test` (`make test TEST=<path>` for one file) |
 | `sh packages/system_design/tool/prepare-env.sh dev` | `make env-dev` |
-| `sh packages/system_design/tool/build-ipa.sh prod` | `make build-ipa-prod` |
+| `sh packages/system_design/tool/build-ipa.sh prod` | `make build-ios-prod` |
 | `packages/system_design/tool/fastlane/Fastfile` | `packages/script-tools/flutter/fastlane/Fastfile` |
 | `packages/system_design/tool/` | `packages/script-tools/flutter/` |
 | `packages/system_design` | `packages/flutter-system-design-kit` |
@@ -61,8 +61,8 @@ Apply in this order — longer patterns first — across `*.md`, `*.yml`,
 | `melos run prepare-env-dev` | `make env-dev` |
 | `melos run deploy-firebase-prod` | `make deploy-prod` |
 | `melos run deploy-firebase-prod rules` | `make deploy-prod ONLY=rules` |
-| `melos run release-dev` | `make release-dev` (`NOTE="…"` for What to Test) |
-| `melos run upload-ipa-dev` | `make upload-ipa-dev` |
+| `melos run release-dev` | `make release-ios-dev` (`NOTE="…"` for What to Test) |
+| `melos run upload-ipa-dev` | `make upload-ios-dev` |
 | `melos run gen-app-icon` / `gen-app-icon-strip-marker` | `make app-icon` / `make app-icon-strip-marker` |
 | `set-up.sh`, `deep-set-up.sh` | `set_up.sh`, `set_up.sh --deep` |
 | `gen.sh`, `analyze.sh`, `test.sh` | `generate_code.sh`, `analyze_code.sh`, `run_tests.sh` |

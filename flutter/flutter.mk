@@ -2,7 +2,8 @@
 #   SCRIPT_TOOLS := packages/script-tools
 #   include $(SCRIPT_TOOLS)/flutter/flutter.mk
 # SCRIPT_TOOLS must be relative to the project root: make cannot handle spaces in paths.
-# Flavored targets take the flavor as a suffix (release-dev), so the destination is typed, never defaulted.
+# Flavored targets take the flavor as a suffix (release-ios-dev), so the destination is typed, never defaulted.
+# Store targets name their platform too: build-ios-, release-ios-, upload-ios-<flavor>.
 
 FLUTTER_SCRIPTS := $(SCRIPT_TOOLS)/flutter
 # Every script finds the project from here, whatever directory make was started in.
@@ -41,11 +42,23 @@ env-%: ## Install the flavor's real config from env_assets/
 deploy-%: ## Deploy Firebase rules, indexes, functions; ONLY=rules|functions
 	@bash $(FLUTTER_SCRIPTS)/deploy_firebase.sh $* $(ONLY)
 
-build-ipa-%: ## Build the flavor's release IPA into build/ios/ipa
+build-ios-%: ## iOS: build the flavor's release IPA into build/ios/ipa
 	@bash $(FLUTTER_SCRIPTS)/build_ipa.sh $*
 
-release-%: ## Config, Firebase deploy, TestFlight; NOTE="..." for What to Test
+release-ios-%: ## iOS: config, Firebase deploy, TestFlight; NOTE="..." for What to Test
 	@bash $(FLUTTER_SCRIPTS)/release_ios.sh $* "$(NOTE)"
 
-upload-ipa-%: ## Upload build/ios/ipa to TestFlight without rebuilding
+
+upload-ios-%: ## iOS: upload build/ios/ipa to TestFlight without rebuilding
 	@bash $(FLUTTER_SCRIPTS)/upload_ipa.sh $*
+
+# Old names fail loudly with the new one instead of guessing. Unlisted in help, and last in the file so make 3.81
+# (which takes the first matching pattern, not the most specific) still picks the -ios- rules above.
+release-%:
+	@echo "error: name the platform — make release-ios-$*" >&2; exit 2
+
+build-ipa-%:
+	@echo "error: renamed — make build-ios-$*" >&2; exit 2
+
+upload-ipa-%:
+	@echo "error: renamed — make upload-ios-$*" >&2; exit 2
