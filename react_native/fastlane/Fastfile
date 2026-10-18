@@ -1,0 +1,135 @@
+# iOS release lanes shared by every React Native app that embeds script-tools.
+# Imported, never copied:
+#
+#   # ios/fastlane/Fastfile
+#   import "../../packages/script-tools/react_native/fastlane/Fastfile"
+#
+# react_native/release_ios.sh runs `fastlane ios beta` and passes what the app
+# is through the environment (RN_WORKSPACE, RN_SCHEME, RN_APP_IDENTIFIER,
+# RN_OUTPUT_DIR, RELEASE_ENV, RELEASE_NOTES). The secrets come from
+# ios/fastlane/.env, which fastlane loads on its own and git must ignore:
+#
+#   IOS_TEAM_ID       Apple Developer team id; release_ios.sh falls back to
+#                     script-tools.properties, then the keychain's one
+#                     Apple Distribution identity
+#   ASC_KEY_ID        App Store Connect API key id
+#   ASC_ISSUER_ID     its issuer id
+#   ASC_KEY_FILEPATH  the AuthKey_<id>.p8, relative to ios/fastlane/ or absolute
+#   ASC_KEY_CONTENT   or, in CI, the .p8 content base64 encoded
+#
+# Helpers carry `rn_` so an app adding one of its own cannot silently replace them.
+
+require "base64"
+require "shellwords"
+require "tmpdir"
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Archive, sign for the App Store and upload to TestFlight. Run through react_native/release_ios.sh"
+  lane :beta do
+    env = ENV.fetch("RELEASE_ENV", "dev")
+    workspace = rn_env!("RN_WORKSPACE")
+    scheme = rn_env!("RN_SCHEME")
+    app_identifier = rn_env!("RN_APP_IDENTIFIER")
+    output_dir = rn_env!("RN_OUTPUT_DIR")
+    team_id = rn_env!("IOS_TEAM_ID")
+    key = rn_asc_api_key
+
+    # TestFlight's latest build plus one, passed to the build only: App Store
+    # Connect refuses a number it has seen, and the project keeps its own
+    # CURRENT_PROJECT_VERSION so local builds never drift.
+    version = get_version_number(xcodeproj: "#{scheme}.xcodeproj", target: scheme)
+    latest = latest_testflight_build_number(
+      api_key: key,
+      app_identifier: app_identifier,
+      version: version,
+      initial_build_number: 0,
+    )
+    build = latest.to_i + 1
+    UI.message("Building #{env} #{version} (#{build}); TestFlight was at #{latest}.")
+
+    # Automatic signing, with the API key standing in for an Apple ID logged
+    # into Xcode, so a machine without one can still create the profiles.
+    # gym passes xcargs to the -exportArchive step too, so the flags go there
+    # once: export_xcargs repeating them makes xcodebuild exit 64 (usage).
+    auth = rn_xcodebuild_auth_args
+    build_app(
+      workspace: workspace,
+      scheme: scheme,
+      configuration: "Release",
+      clean: true,
+      export_method: "app-store",
+      export_team_id: team_id,
+      output_directory: output_dir,
+      output_name: "#{scheme}.ipa",
+      xcargs: [
+        "-allowProvisioningUpdates",
+        *auth,
+        "DEVELOPMENT_TEAM=#{team_id}",
+        "CODE_SIGN_STYLE=Automatic",
+        "CURRENT_PROJECT_VERSION=#{build}",
+      ].join(" "),
+    )
+
+    notes = ENV["RELEASE_NOTES"].to_s.strip
+    notes = "#{env} · #{version} (#{build}) · #{last_git_commit[:abbreviated_commit_hash]}" if notes.empty?
+    upload_to_testflight(
+      api_key: key,
+      app_identifier: app_identifier,
+      ipa: File.join(output_dir, "#{scheme}.ipa"),
+      changelog: notes,
+      skip_waiting_for_build_processing: true,
+    )
+
+    # release_ios.sh names the copy in Release/ after this.
+    File.write(File.join(output_dir, "version.txt"), "#{version}-#{build}")
+    UI.success("Uploaded #{env} #{version} (#{build}) to TestFlight.")
+  end
+end
+
+# A setting that must be there, failing with where to put it rather than a KeyError.
+def rn_env!(name)
+  value = ENV[name].to_s
+  return value unless value.empty?
+  if name.start_with?("RN_")
+    UI.user_error!("#{name} is not set. Run the release through react_native/release_ios.sh (make release-ios-<env>).")
+  end
+  UI.user_error!("#{name} is not set. Add it to ios/fastlane/.env (see .env.example).")
+end
+
+# App Store Connect API key: a .p8 file locally, or its base64 content in CI,
+# where a multi-line secret tends to lose its newlines.
+def rn_asc_api_key
+  common = { key_id: rn_env!("ASC_KEY_ID"), issuer_id: rn_env!("ASC_ISSUER_ID") }
+  content = ENV["ASC_KEY_CONTENT"].to_s
+  if content.empty?
+    app_store_connect_api_key(**common, key_filepath: rn_key_filepath)
+  else
+    app_store_connect_api_key(**common, key_content: content, is_key_content_base64: true)
+  end
+end
+
+# The .p8 on disk, written from ASC_KEY_CONTENT when only that is set:
+# xcodebuild takes the key as a file path, never as content.
+def rn_key_filepath
+  path = ENV["ASC_KEY_FILEPATH"].to_s
+  unless path.empty?
+    # Relative to ios/fastlane/, where the app's Fastfile and .env live.
+    full = File.expand_path(path, File.join(Dir.pwd, "fastlane"))
+    full = File.expand_path(path) unless File.exist?(full)
+    UI.user_error!("ASC_KEY_FILEPATH points at #{full}, which does not exist.") unless File.exist?(full)
+    return full
+  end
+  file = File.join(Dir.mktmpdir, "AuthKey.p8")
+  File.write(file, Base64.decode64(rn_env!("ASC_KEY_CONTENT")))
+  file
+end
+
+def rn_xcodebuild_auth_args
+  [
+    "-authenticationKeyPath", rn_key_filepath.shellescape,
+    "-authenticationKeyID", rn_env!("ASC_KEY_ID"),
+    "-authenticationKeyIssuerID", rn_env!("ASC_ISSUER_ID"),
+  ]
+end
