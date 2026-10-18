@@ -51,6 +51,8 @@ platform :ios do
 
     # Automatic signing, with the API key standing in for an Apple ID logged
     # into Xcode, so a machine without one can still create the profiles.
+    # gym passes xcargs to the -exportArchive step too, so the flags go there
+    # once: export_xcargs repeating them makes xcodebuild exit 64 (usage).
     auth = rn_xcodebuild_auth_args
     build_app(
       workspace: workspace,
@@ -68,7 +70,6 @@ platform :ios do
         "CODE_SIGN_STYLE=Automatic",
         "CURRENT_PROJECT_VERSION=#{build}",
       ].join(" "),
-      export_xcargs: ["-allowProvisioningUpdates", *auth].join(" "),
     )
 
     notes = ENV["RELEASE_NOTES"].to_s.strip
