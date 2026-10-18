@@ -28,6 +28,13 @@ flutter/            scripts for Flutter apps (iOS release via fastlane, Firebase
 ios/                scripts for native Xcode projects
   reset_xcode.sh      deep reset of the project's Xcode state
   ios.mk              make targets for the project Makefile
+react_native/       scripts for React Native apps (CocoaPods, iOS release via fastlane)
+  set_up.sh           submodules, pull, npm ci, clean pod install
+  release_ios.sh      signed IPA to TestFlight and Release/
+  react_native.mk     make targets for the project Makefile
+  lib/common.sh       project root, workspace and bundle id lookup
+  fastlane/Fastfile   shared iOS lane: beta
+  fastlane/env.example  the keys ios/fastlane/.env needs
 ```
 
 Conventions for new scripts:
@@ -65,6 +72,10 @@ IOS_PROJECT=MyApp.xcodeproj
 IOS_SCHEME=MyApp
 # Folder of local Swift packages whose .build/ and .swiftpm/ are cleared; default: Packages.
 IOS_PACKAGES_DIR=Packages
+# react_native/: workspace under ios/; default: the only ios/*.xcworkspace.
+IOS_WORKSPACE=ios/MyApp.xcworkspace
+# react_native/: bundle id of the upload; default: the one PRODUCT_BUNDLE_IDENTIFIER in ios/*.xcodeproj.
+IOS_APP_IDENTIFIER=com.example.myapp
 ```
 
 Add `Release/` to the project's `.gitignore`.
@@ -179,3 +190,48 @@ include $(SCRIPT_TOOLS)/ios/ios.mk
 | `make reset-xcode` / `deep-reset-xcode` | `reset_xcode.sh` / `reset_xcode.sh --all` |
 
 `ios.mk` defines `help` like the others; include one platform file per Makefile.
+
+## React Native scripts
+
+Run from the project root (or set `PROJECT_ROOT`); the root is the nearest folder holding `script-tools.properties` or `package.json`.
+
+| Script | Does |
+| --- | --- |
+| `react_native/set_up.sh` | `git submodule update --init --recursive`, `git pull --ff-only` (skipped with `NO_PULL=1`), `npm ci`, then on macOS `bundle install`, removes `ios/Pods`, `ios/Podfile.lock`, `ios/build` and runs `pod install --repo-update` with a UTF-8 locale |
+| `react_native/release_ios.sh <env> [note]` | Checks the setup, runs fastlane `ios beta` (archive, automatic App Store signing, TestFlight upload), copies the IPA to `<project>/Release/<env>-<APP_NAME>-<version>-<build>.ipa`. `<env>` must be listed in `FLAVORS` (default `dev`) |
+
+The build number is TestFlight's latest for the version plus one, passed to the build as `CURRENT_PROJECT_VERSION` only, so the project file never changes. Signing is automatic: the App Store Connect API key lets Xcode create the certificate and profiles without an Apple ID logged into Xcode.
+
+The lane is imported, never copied — `ios/fastlane/Fastfile`:
+
+```ruby
+import "../../packages/script-tools/react_native/fastlane/Fastfile"
+```
+
+Secrets go in `ios/fastlane/.env`, which fastlane loads on its own; copy [`react_native/fastlane/env.example`](react_native/fastlane/env.example) and add `**/fastlane/.env` and `**/fastlane/*.p8` to the project's `.gitignore`.
+
+| Key | What it is |
+| --- | --- |
+| `IOS_TEAM_ID` | Apple Developer team id |
+| `ASC_KEY_ID`, `ASC_ISSUER_ID` | App Store Connect API key (role App Manager) |
+| `ASC_KEY_FILEPATH` | The `AuthKey_<id>.p8`, relative to `ios/fastlane/` or absolute |
+| `ASC_KEY_CONTENT` | Or, in CI, the `.p8` content base64 encoded |
+
+The project needs `gem 'fastlane'` in its `Gemfile`.
+
+## React Native make targets
+
+```make
+SCRIPT_TOOLS := packages/script-tools
+include $(SCRIPT_TOOLS)/react_native/react_native.mk
+```
+
+| Target | Runs |
+| --- | --- |
+| `make` / `make help` | Lists the targets |
+| `make set-up [NO_PULL=1]` | `set_up.sh` |
+| `make run-ios [SIMULATOR="iPhone 17 Pro"]` | `npx react-native run-ios` |
+| `make run-android` | `npx react-native run-android` |
+| `make release-ios-<env> [NOTE="..."]` | `release_ios.sh <env>` |
+
+`react_native.mk` defines `help` like the others; include one platform file per Makefile.
