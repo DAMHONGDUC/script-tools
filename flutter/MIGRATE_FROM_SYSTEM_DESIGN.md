@@ -61,7 +61,7 @@ Apply in this order — longer patterns first — across `*.md`, `*.yml`,
 | `melos run prepare-env-dev` | `make env-dev` |
 | `melos run deploy-firebase-prod` | `make deploy-prod` |
 | `melos run deploy-firebase-prod rules` | `make deploy-prod ONLY=rules` |
-| `melos run release-dev` | `make release-dev` (`NOTE="…"` for What to Test) |
+| `melos run release-dev` | `make release-ios-dev` (`NOTE="…"` for What to Test) |
 | `melos run upload-ipa-dev` | `make upload-ipa-dev` |
 | `melos run gen-app-icon` / `gen-app-icon-strip-marker` | `make app-icon` / `make app-icon-strip-marker` |
 | `set-up.sh`, `deep-set-up.sh` | `set_up.sh`, `set_up.sh --deep` |

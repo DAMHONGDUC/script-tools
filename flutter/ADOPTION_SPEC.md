@@ -1,6 +1,6 @@
 # Adopting the flutter/ scripts in a project
 
-Everything a Flutter app needs to run `make set-up`, `make release-dev` and the
+Everything a Flutter app needs to run `make set-up`, `make release-ios-dev` and the
 rest from this repo. Nothing here is copied into the app: the app adds two
 submodules, a two-line `Makefile`, and the files that say what the app *is*.
 `../README.md` is the reference per script; this file is the checklist.
@@ -62,7 +62,7 @@ include $(SCRIPT_TOOLS)/flutter/flutter.mk
 | `env-<flavor>` | `make env-dev` | `env_assets/` → the paths in §4 |
 | `deploy-<flavor>` | `make deploy-prod ONLY=rules` | rules + indexes, then functions after their tests |
 | `build-ipa-<flavor>` | `make build-ipa-dev` | `flutter build ipa --dart-define-from-file=env/dev.json` → `build/ios/ipa/` |
-| `release-<flavor>` | `make release-dev NOTE="new paywall"` | env → deploy → `fastlane beta` (bumps the build number) |
+| `release-ios-<flavor>` | `make release-ios-dev NOTE="new paywall"` | env → deploy → `fastlane beta` (bumps the build number) |
 | `upload-ipa-<flavor>` | `make upload-ipa-dev` | `fastlane upload` of the IPA already built |
 | `app-icon` | `make app-icon` | launcher icons + rounded launch images from `assets/images/app_icon.png` |
 
@@ -144,7 +144,7 @@ Step by step, with the full rename list: `MIGRATE_FROM_SYSTEM_DESIGN.md`.
 | Before | After |
 |---|---|
 | `packages/system_design/tool/*.sh` | `packages/script-tools/flutter/*.sh` (`set-up.sh` → `set_up.sh`, `gen.sh` → `generate_code.sh`, `build-ipa.sh` → `build_ipa.sh`, …) |
-| `melos run release-dev` | `make release-dev` |
+| `melos run release-dev` | `make release-ios-dev` |
 | `melos run prepare-env-dev` | `make env-dev` |
 | `melos run deploy-firebase-prod rules` | `make deploy-prod ONLY=rules` |
 | `melos run gen-app-icon` | `make app-icon` |

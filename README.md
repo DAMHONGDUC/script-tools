@@ -152,7 +152,7 @@ include $(SCRIPT_TOOLS)/flutter/flutter.mk
 | `make env-<flavor>` | `prepare_env.sh <flavor>` |
 | `make deploy-<flavor> [ONLY=rules\|functions]` | `deploy_firebase.sh` |
 | `make build-ipa-<flavor>` | `build_ipa.sh` |
-| `make release-<flavor> [NOTE="..."]` | `release_ios.sh` |
+| `make release-ios-<flavor> [NOTE="..."]` | `release_ios.sh` |
 | `make upload-ipa-<flavor>` | `upload_ipa.sh` |
 | `make app-icon` / `app-icon-strip-marker` | `generate_app_icon.sh` / `strip_icon_marker.sh` |
 
