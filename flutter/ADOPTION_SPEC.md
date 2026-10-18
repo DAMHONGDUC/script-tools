@@ -61,9 +61,9 @@ include $(SCRIPT_TOOLS)/flutter/flutter.mk
 | `test` | `make test TEST=test/features/attacks/log_flow_test.dart` | `flutter test <path>` |
 | `env-<flavor>` | `make env-dev` | `env_assets/` → the paths in §4 |
 | `deploy-<flavor>` | `make deploy-prod ONLY=rules` | rules + indexes, then functions after their tests |
-| `build-ipa-<flavor>` | `make build-ipa-dev` | `flutter build ipa --dart-define-from-file=env/dev.json` → `build/ios/ipa/` |
+| `build-ios-<flavor>` | `make build-ios-dev` | `flutter build ipa --dart-define-from-file=env/dev.json` → `build/ios/ipa/` |
 | `release-ios-<flavor>` | `make release-ios-dev NOTE="new paywall"` | env → deploy → `fastlane beta` (bumps the build number) |
-| `upload-ipa-<flavor>` | `make upload-ipa-dev` | `fastlane upload` of the IPA already built |
+| `upload-ios-<flavor>` | `make upload-ios-dev` | `fastlane upload` of the IPA already built |
 | `app-icon` | `make app-icon` | launcher icons + rounded launch images from `assets/images/app_icon.png` |
 
 ## 4. env_assets/ — what `make env-<flavor>` copies
