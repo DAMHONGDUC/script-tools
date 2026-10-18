@@ -49,6 +49,19 @@ platform :ios do
     build = latest.to_i + 1
     UI.message("Building #{env} #{version} (#{build}); TestFlight was at #{latest}.")
 
+    # The archive's automatic signing can settle for the team's wildcard
+    # profile, and the export then finds no App Store profile and does not
+    # create one. sigh creates or reuses it through the API key, and the
+    # export signs with it by name. An app with extensions needs their
+    # bundle ids mapped here too.
+    get_provisioning_profile(
+      api_key: key,
+      app_identifier: app_identifier,
+      team_id: team_id,
+      output_path: Dir.mktmpdir,
+    )
+    profile = lane_context[SharedValues::SIGH_NAME]
+
     # Automatic signing, with the API key standing in for an Apple ID logged
     # into Xcode, so a machine without one can still create the profiles.
     # gym passes xcargs to the -exportArchive step too, so the flags go there
@@ -61,6 +74,11 @@ platform :ios do
       clean: true,
       export_method: "app-store",
       export_team_id: team_id,
+      export_options: {
+        signingStyle: "manual",
+        signingCertificate: "Apple Distribution",
+        provisioningProfiles: { app_identifier => profile },
+      },
       output_directory: output_dir,
       output_name: "#{scheme}.ipa",
       xcargs: [
