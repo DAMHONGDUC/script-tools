@@ -85,5 +85,10 @@ VERSION=$(grep '^version:' pubspec.yaml | head -1 | cut -d' ' -f2)
 step "build ipa — $TARGET $VERSION"
 $FL build ipa --release "$@"
 
+# `flutter build ipa` exits 0 when the archive succeeds and only the export fails (no account, no profile), so the
+# IPA itself is the proof. Without this check the lane learns it 2 minutes later as "No IPA under build/ios/ipa".
+ls "$IPA_DIR"/*.ipa >/dev/null 2>&1 ||
+  fail "archive built but no .ipa was exported — no App Store profile for this bundle id on this Mac. Run: cd ios && bundle exec fastlane certificates"
+
 done_msg "built $TARGET $VERSION into $IPA_DIR"
 warn "bump version: in pubspec.yaml before the next build — App Store Connect refuses a number it has seen"
