@@ -24,7 +24,7 @@ release-android-<flavor>  env, then build the release APK and AAB
 - **One word per verb, no hyphen inside it**: `setup`, not `set-up`. A hyphen only separates the verb from its qualifier and the flavor (`setup-deep`, `deploy-be-dev`).
 - **The list stays minimal** (owner's rule): a command earns a place only if it is typed in every project. Where a platform had a command that came off the list, it still runs, unlisted.
 - **A platform's own extras come after the list** (`sms` on Android) and a project's own after those (`pre-build` in a Flutter app); `make help` orders them that way by itself.
-- **A renamed command keeps its old name working**, left out of `make help`, so a note or a CI step that still types it does not break.
+- **A renamed command keeps its old name working when the old name still means one thing**, left out of `make help`, so a note or a CI step that still types it does not break. **An old name that would now be a guess fails, printing the name to use**: `release-<flavor>` (which platform? and the backend is its own command now), `build-ipa-<flavor>`, `upload-ipa-<flavor>`.
 
 ## The list
 
@@ -49,17 +49,16 @@ release-android-<flavor>  env, then build the release APK and AAB
 | Flutter | `gen`, `analyze` | `generate_code.sh` / `analyze_code.sh` |
 | Flutter | `set-up`, `deep-set-up` | `setup`, `setup-deep` |
 | Flutter | `app-icon`, `app-icon-strip-marker` | `icon`, `icon-strip` |
-| Flutter | `build-ipa-<flavor>` | the IPA alone, no config step |
-| Flutter | `upload-ipa-<flavor>` | upload the IPA already built — the retry when TestFlight was not reached |
+| Flutter | `build-ios-<flavor>` | the IPA alone, no config step |
+| Flutter | `upload-ios-<flavor>` | upload the IPA already built — the retry when TestFlight was not reached |
 | Flutter | `deploy-<flavor>` | `deploy-be-<flavor>` |
-| Flutter | `release-<flavor>` | the old release: `deploy-be-<flavor>`, then `release-ios-<flavor>` |
 | Android | `clean`, `analyze` / `lint` | `./gradlew clean` / lint on `VARIANT` |
 | Android | `install`, `build` | install / assemble `VARIANT` |
 | Android | `apk FLAVOR=<flavor>`, `aab FLAVOR=<flavor>` | one format alone |
 
 ## Adding a platform
 
-React Native and native iOS have no folder yet; each gets one with its first script (README, convention 1). Its make file:
+`react_native/` and `ios/` exist and predate this list: `react_native.mk` has `set-up`, `run-ios`, `run-android` and `release-ios-<env>`, `ios.mk` has `reset-xcode`. **They are not on the list yet**; moving one onto it follows the steps below, with the table after them as the target. A new platform's make file:
 
 1. Sets `PLATFORM := <Name>` and includes `$(SCRIPT_TOOLS)/common/commands.mk` before any target.
 2. Defines **every** command in the list, a `## ` description on each, and `$(call not_on,<reason>)` as the whole recipe of one it cannot do.

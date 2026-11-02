@@ -6,7 +6,7 @@
 # The command names are the shared list in common/COMMANDS.md — the same in every platform's file.
 #
 # make 3.81, the one macOS ships, takes the FIRST pattern that matches: every specific pattern (release-ios-%,
-# deploy-be-%, build-ipa-%) sits above the old general names (release-%, deploy-%) at the end of this file.
+# deploy-be-%, build-ios-%) sits above the old general names (release-%, deploy-%) at the end of this file.
 
 PLATFORM := Flutter
 include $(SCRIPT_TOOLS)/common/commands.mk
@@ -54,22 +54,26 @@ gen:
 analyze:
 	@bash $(FLUTTER_SCRIPTS)/analyze_code.sh
 
-# Old names, kept working and left out of `make help`: projects and notes still type them.
+# Old names that still mean one thing, kept working and left out of `make help`.
 .PHONY: set-up deep-set-up app-icon app-icon-strip-marker
 set-up: setup
 deep-set-up: setup-deep
 app-icon: icon
 app-icon-strip-marker: icon-strip
 
-# The IPA alone, and the upload of one already built — what release-ios-% does in one go, kept for a retry.
-build-ipa-%:
+# The IPA alone, and the upload of one already built: the two halves of release-ios-%, kept for a retry.
+build-ios-%:
 	@bash $(FLUTTER_SCRIPTS)/build_ipa.sh $*
-upload-ipa-%:
+upload-ios-%:
 	@bash $(FLUTTER_SCRIPTS)/upload_ipa.sh $*
 
-# Last, below every specific pattern. The old release did both halves, so it still does.
+# Old names that would now be a guess fail loudly with the new one. Last in the file, below every specific
+# pattern, so make 3.81 still picks the -ios-, -android- and -be- rules above.
+build-ipa-%:
+	@echo "error: renamed — make build-ios-$*" >&2; exit 2
+upload-ipa-%:
+	@echo "error: renamed — make upload-ios-$*" >&2; exit 2
+release-%:
+	@echo "error: name the platform — make release-ios-$* or release-android-$*; the backend is make deploy-be-$*" >&2; exit 2
 deploy-%:
 	@bash $(FLUTTER_SCRIPTS)/deploy_backend.sh $* $(ONLY)
-release-%:
-	@bash $(FLUTTER_SCRIPTS)/deploy_backend.sh $*
-	@bash $(FLUTTER_SCRIPTS)/release_ios.sh $* "$(NOTE)"
