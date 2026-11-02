@@ -1,6 +1,6 @@
 # Adopting the flutter/ scripts in a project
 
-Everything a Flutter app needs to run `make set-up`, `make release-dev` and the
+Everything a Flutter app needs to run `make setup`, `make release-dev` and the
 rest from this repo. Nothing here is copied into the app: the app adds two
 submodules, a two-line `Makefile`, and the files that say what the app *is*.
 `../README.md` is the reference per script; this file is the checklist.
@@ -41,7 +41,7 @@ deploy"), never failed.
 | 8 | Real config per machine | fill `env_assets/` with the files in §4 |
 | 9 | iOS lanes | `ios/fastlane/Fastfile` per §5, plus `Appfile`, `Matchfile`, `ios/Gemfile`, `bundle install` |
 | 10 | CI | §6 |
-| 11 | Check | `make`, then `make set-up`, then `make analyze` |
+| 11 | Check | `make`, then `make setup`, then `make analyze` |
 
 ## 3. Makefile
 
@@ -56,15 +56,15 @@ include $(SCRIPT_TOOLS)/flutter/flutter.mk
 
 | Target | Example | Runs |
 |---|---|---|
-| `set-up` / `deep-set-up` | `make set-up` | wipe, submodules on their branch, `pub get` (app + `packages/*`), l10n, build_runner, env templates, `npm ci` |
+| `setup` / `setup-deep` | `make setup` | wipe, submodules on their branch, `pub get` (app + `packages/*`), l10n, build_runner, env templates, `npm ci` |
 | `gen` / `analyze` | `make analyze` | l10n + build_runner / `flutter analyze --fatal-infos` |
 | `test` | `make test TEST=test/features/attacks/log_flow_test.dart` | `flutter test <path>` |
 | `env-<flavor>` | `make env-dev` | `env_assets/` → the paths in §4 |
 | `deploy-<flavor>` | `make deploy-prod ONLY=rules` | rules + indexes, then functions after their tests |
-| `build-ipa-<flavor>` | `make build-ipa-dev` | `flutter build ipa --dart-define-from-file=env/dev.json` → `build/ios/ipa/` |
+| `ipa-<flavor>` | `make ipa-dev` | `flutter build ipa --dart-define-from-file=env/dev.json` → `build/ios/ipa/` |
 | `release-<flavor>` | `make release-dev NOTE="new paywall"` | env → deploy → `fastlane beta` (bumps the build number) |
-| `upload-ipa-<flavor>` | `make upload-ipa-dev` | `fastlane upload` of the IPA already built |
-| `app-icon` | `make app-icon` | launcher icons + rounded launch images from `assets/images/app_icon.png` |
+| `upload-<flavor>` | `make upload-dev` | `fastlane upload` of the IPA already built |
+| `icon` | `make icon` | launcher icons + rounded launch images from `assets/images/app_icon.png` |
 
 ## 4. env_assets/ — what `make env-<flavor>` copies
 
@@ -147,7 +147,7 @@ Step by step, with the full rename list: `MIGRATE_FROM_SYSTEM_DESIGN.md`.
 | `melos run release-dev` | `make release-dev` |
 | `melos run prepare-env-dev` | `make env-dev` |
 | `melos run deploy-firebase-prod rules` | `make deploy-prod ONLY=rules` |
-| `melos run gen-app-icon` | `make app-icon` |
+| `melos run gen-app-icon` | `make icon` |
 | `import "../../packages/system_design/tool/fastlane/Fastfile"` | `import "../../packages/script-tools/flutter/fastlane/Fastfile"` |
 | `sh` (POSIX, run by melos) | `bash`, project found from `PROJECT_ROOT` or the nearest `pubspec.yaml` |
 | `scripts:` in `melos.yaml` | removed; melos, if kept, only bootstraps |
@@ -158,6 +158,6 @@ Step by step, with the full rename list: `MIGRATE_FROM_SYSTEM_DESIGN.md`.
 |---|---|
 | `make` | the target list prints |
 | `make env-qa` | refused: `usage: prepare_env.sh <flavor> (flavor: dev, prod)` |
-| `make set-up` | ends without `✘`; lists any env file it created from a template |
+| `make setup` | ends without `✘`; lists any env file it created from a template |
 | `make analyze` | `No issues found!` |
 | `cd ios && bundle exec fastlane lanes` | shows `beta`, `upload`, `preflight`, `certificates` |

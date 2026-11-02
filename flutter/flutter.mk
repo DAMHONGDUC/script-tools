@@ -3,22 +3,40 @@
 #   include $(SCRIPT_TOOLS)/flutter/flutter.mk
 # SCRIPT_TOOLS must be relative to the project root: make cannot handle spaces in paths.
 # Flavored targets take the flavor as a suffix (release-dev), so the destination is typed, never defaulted.
+# The command names are the shared list in common/COMMANDS.md — the same in every platform's file.
+
+PLATFORM := Flutter
+include $(SCRIPT_TOOLS)/common/commands.mk
 
 FLUTTER_SCRIPTS := $(SCRIPT_TOOLS)/flutter
 # Every script finds the project from here, whatever directory make was started in.
 export PROJECT_ROOT := $(CURDIR)
 
-.DEFAULT_GOAL := help
-.PHONY: help set-up deep-set-up gen analyze test app-icon app-icon-strip-marker
+.PHONY: setup setup-deep clean gen analyze test icon icon-strip
 
-help: ## List the targets
-	@grep -hE '^[a-z0-9%-]+:.*## ' $(MAKEFILE_LIST) | sort -u | sed 's/%/<flavor>/' | awk -F ':.*## ' '{printf "  %-26s %s\n", $$1, $$2}'
+# Old names, kept working and left out of `make help`: projects and notes still type them.
+# The two patterns come first and run their script directly: make 3.81, the one macOS ships, takes the first
+# pattern that matches, and `upload-%` would otherwise read `upload-ipa-prod` as the flavor `ipa-prod`.
+build-ipa-%:
+	@bash $(FLUTTER_SCRIPTS)/build_ipa.sh $*
 
-set-up: ## Wipe build outputs, then submodules, pub get, codegen, env templates
+upload-ipa-%:
+	@bash $(FLUTTER_SCRIPTS)/upload_ipa.sh $*
+
+.PHONY: set-up deep-set-up app-icon app-icon-strip-marker
+set-up: setup
+deep-set-up: setup-deep
+app-icon: icon
+app-icon-strip-marker: icon-strip
+
+setup: ## Wipe build outputs, then submodules, pub get, codegen, env templates
 	@bash $(FLUTTER_SCRIPTS)/set_up.sh
 
-deep-set-up: ## set-up, plus this project's Xcode DerivedData
+setup-deep: ## setup, plus this project's Xcode DerivedData
 	@bash $(FLUTTER_SCRIPTS)/set_up.sh --deep
+
+clean: ## Delete build outputs only
+	@bash $(FLUTTER_SCRIPTS)/clean_build.sh
 
 gen: ## Regenerate localizations and build_runner output
 	@bash $(FLUTTER_SCRIPTS)/generate_code.sh
@@ -26,26 +44,35 @@ gen: ## Regenerate localizations and build_runner output
 analyze: ## flutter analyze --fatal-infos, the CI gate
 	@bash $(FLUTTER_SCRIPTS)/analyze_code.sh
 
-test: ## flutter test; TEST=<path> runs one file or folder
+test: ## Run the tests; TEST=<path> runs one file or folder
 	@bash $(FLUTTER_SCRIPTS)/run_tests.sh $(TEST)
 
-app-icon: ## Every launcher and launch screen icon from assets/images/app_icon.png
-	@bash $(FLUTTER_SCRIPTS)/generate_app_icon.sh
-
-app-icon-strip-marker: ## Erase the generator's watermark from the icon artwork, in place
-	@bash $(FLUTTER_SCRIPTS)/strip_icon_marker.sh
+run-%: ## Run the app in debug with the flavor's config
+	@bash $(FLUTTER_SCRIPTS)/run_app.sh $*
 
 env-%: ## Install the flavor's real config from env_assets/
 	@bash $(FLUTTER_SCRIPTS)/prepare_env.sh $*
 
-deploy-%: ## Deploy Firebase rules, indexes, functions; ONLY=rules|functions
+deploy-%: ## Deploy the backend (Firebase rules, indexes, functions); ONLY=rules|functions
 	@bash $(FLUTTER_SCRIPTS)/deploy_firebase.sh $* $(ONLY)
 
-build-ipa-%: ## Build the flavor's release IPA into build/ios/ipa
+ipa-%: ## Build the flavor's release IPA into build/ios/ipa
 	@bash $(FLUTTER_SCRIPTS)/build_ipa.sh $*
 
-release-%: ## Config, Firebase deploy, TestFlight; NOTE="..." for What to Test
+apk-%: ## Build the flavor's release APK
+	$(call not_on,no Android release script yet — add flutter/build_apk.sh)
+
+aab-%: ## Build the flavor's release AAB
+	$(call not_on,no Android release script yet — add flutter/build_aab.sh)
+
+release-%: ## Ship the flavor: config, backend deploy, TestFlight; NOTE="..." for What to Test
 	@bash $(FLUTTER_SCRIPTS)/release_ios.sh $* "$(NOTE)"
 
-upload-ipa-%: ## Upload build/ios/ipa to TestFlight without rebuilding
+upload-%: ## Upload the build already made to TestFlight, without rebuilding
 	@bash $(FLUTTER_SCRIPTS)/upload_ipa.sh $*
+
+icon: ## Every launcher and launch screen icon from assets/images/app_icon.png
+	@bash $(FLUTTER_SCRIPTS)/generate_app_icon.sh
+
+icon-strip: ## Erase the generator's watermark from the icon artwork, in place
+	@bash $(FLUTTER_SCRIPTS)/strip_icon_marker.sh
