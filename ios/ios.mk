@@ -4,10 +4,13 @@
 # SCRIPT_TOOLS must be relative to the project root: make cannot handle spaces in paths.
 
 .DEFAULT_GOAL := help
-.PHONY: help reset-xcode deep-reset-xcode
+.PHONY: help pull reset-xcode deep-reset-xcode
 
 help: ## List the targets
 	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | sort -u | awk -F ':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
+
+pull: ## Fast-forward the project and every submodule to the head of its main branch; never commits or pushes
+	@bash $(SCRIPT_TOOLS)/common/pull_latest.sh
 
 reset-xcode: ## Quit Xcode, delete DerivedData, build/ and package caches, regenerate, resolve, reopen
 	$(SCRIPT_TOOLS)/ios/reset_xcode.sh
