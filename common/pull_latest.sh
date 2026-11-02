@@ -167,7 +167,7 @@ pull_repo() (
 
 width="$(label_width)"
 
-step "pull — every repo to the head of its main branch, fast-forward only"
+step "pull-all — every repo to the head of its main branch, fast-forward only"
 refused=0
 pull_repo "" "" || refused=$((refused + 1))
 pull_submodules ""

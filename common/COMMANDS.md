@@ -32,8 +32,8 @@ release-android-<flavor>  env, then build the release APK and AAB
 | Command | Does | Flutter | Android (Gradle) |
 |---|---|---|---|
 | `help` | List the commands | ✓ | ✓ |
-| `pull` | Project and every submodule to the head of its main branch, fast-forward only; never commits or pushes | `common/pull_latest.sh` | `common/pull_latest.sh` |
-| `push` | Every submodule, then the project, on its current branch to `origin`; never forces; `DRY_RUN=1` sends nothing | `common/push_current.sh` | `common/push_current.sh` |
+| `pull-all` | Project and every submodule to the head of its main branch, fast-forward only; never commits or pushes | `common/pull_latest.sh` | `common/pull_latest.sh` |
+| `push-all` | Every submodule, then the project, on its current branch to `origin`; never forces; `DRY_RUN=1` sends nothing | `common/push_current.sh` | `common/push_current.sh` |
 | `setup` | Everything a fresh clone needs before it builds | `set_up.sh` | submodules, Gradle dependencies |
 | `setup-deep` | `setup`, after a deeper wipe | `set_up.sh --deep` (Xcode DerivedData) | `./gradlew clean`, then `setup` |
 | `test` | Unit tests; `TEST=` narrows them | `TEST=<path>` | `TEST=<ClassName>` |
@@ -45,7 +45,7 @@ release-android-<flavor>  env, then build the release APK and AAB
 | `icon` | Every app icon from the artwork | ✓ | — |
 | `icon-strip` | Erase the generator's watermark from the artwork | ✓ | — |
 
-`pull` and `push` are the commands whose recipe is the same everywhere, so `commands.mk` defines them and no platform file repeats them. `ios.mk` and `react_native.mk`, which do not include `commands.mk` yet, carry the same one-line targets.
+`pull-all` and `push-all` are the commands whose recipe is the same everywhere, so `commands.mk` defines them and no platform file repeats them. `ios.mk` and `react_native.mk`, which do not include `commands.mk` yet, carry the same one-line targets.
 
 ## Off the list, still running
 
@@ -66,7 +66,7 @@ release-android-<flavor>  env, then build the release APK and AAB
 `react_native/` and `ios/` exist and predate this list: `react_native.mk` has `set-up`, `run-ios`, `run-android` and `release-ios-<env>`, `ios.mk` has `reset-xcode`. **They are not on the list yet**; moving one onto it follows the steps below, with the table after them as the target. A new platform's make file:
 
 1. Sets `PLATFORM := <Name>` and includes `$(SCRIPT_TOOLS)/common/commands.mk` before any target.
-2. Defines **every** command in the list but `pull` and `push`, which `commands.mk` defines, a `## ` description on each, and `$(call not_on,<reason>)` as the whole recipe of one it cannot do.
+2. Defines **every** command in the list but `pull-all` and `push-all`, which `commands.mk` defines, a `## ` description on each, and `$(call not_on,<reason>)` as the whole recipe of one it cannot do.
 3. Puts every specific pattern (`release-ios-%`) above any general one (`release-%`): make 3.81, the one macOS ships, takes the first pattern that matches.
 4. Adds its extras after the list, and no command that means the same as one on the list under another name.
 

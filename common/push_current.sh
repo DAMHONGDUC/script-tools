@@ -57,7 +57,7 @@ push_repo() (
       ok "$label $branch $(short HEAD), $(git rev-list --count "HEAD..$remote") behind origin — nothing to push$dirty"
       exit 0
     fi
-    bad "$label origin/$branch has commits this $branch lacks — make pull (or rebase) first; never forced"
+    bad "$label origin/$branch has commits this $branch lacks — make pull-all (or rebase) first; never forced"
     exit 1
   fi
 
@@ -83,7 +83,7 @@ push_repo() (
 
 width="$(label_width)"
 
-step "push — every repo's current branch to origin, submodules first${DRY_RUN:+ (dry run)}"
+step "push-all — every repo's current branch to origin, submodules first${DRY_RUN:+ (dry run)}"
 refused=0
 # foreach lists parents before their children; reversed, every submodule goes before the repo that records it.
 while read -r -u 3 path; do
