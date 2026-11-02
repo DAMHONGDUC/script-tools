@@ -6,7 +6,7 @@
 #
 # The platform file sets PLATFORM before including this one.
 
-COMMANDS := help setup setup-deep clean gen analyze test \
+COMMANDS := help setup setup-deep test \
   run-% env-% deploy-% ipa-% apk-% aab-% release-% upload-% icon icon-strip
 
 .DEFAULT_GOAL := help

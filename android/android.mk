@@ -8,7 +8,7 @@ PLATFORM := Android
 include $(SCRIPT_TOOLS)/common/commands.mk
 
 APP_MODULE ?= app
-# Variant for analyze/test and the flavorless `run`, e.g. DevDebug for a project with flavors.
+# Variant for test, lint and the flavorless `run`, e.g. DevDebug for a project with flavors.
 VARIANT ?= Debug
 
 GRADLE := ./gradlew
@@ -16,10 +16,15 @@ FLAVOR_ENV = $(if $(FLAVOR),FLAVOR=$(FLAVOR))
 # The flavor a pattern target was given, capitalized the way Gradle names its tasks: dev -> Dev.
 CAP_STEM = $$(printf '%s' '$*' | awk '{ print toupper(substr($$0, 1, 1)) substr($$0, 2) }')
 
-.PHONY: setup setup-deep clean gen analyze test icon icon-strip sms
+.PHONY: setup setup-deep test icon icon-strip sms
 
 # Old names, kept working and left out of `make help`: projects and notes still type them.
-.PHONY: build install lint apk aab run
+# clean and analyze are off the shared list too (owner's rule: the list stays minimal) and still run.
+.PHONY: build install lint apk aab run clean analyze
+clean:
+	$(GRADLE) clean
+analyze:
+	$(GRADLE) :$(APP_MODULE):lint$(VARIANT)
 build:
 	$(GRADLE) :$(APP_MODULE):assemble$(VARIANT)
 install run:
@@ -35,15 +40,6 @@ setup: ## Submodules, then resolve every Gradle dependency
 	$(GRADLE) :$(APP_MODULE):dependencies --refresh-dependencies --quiet > /dev/null
 
 setup-deep: clean setup ## setup after deleting every build output
-
-clean: ## Delete build outputs only
-	$(GRADLE) clean
-
-gen: ## Regenerate generated code
-	$(call not_on,code generation runs inside the Gradle build)
-
-analyze: ## Run Android lint on VARIANT, the CI gate
-	$(GRADLE) :$(APP_MODULE):lint$(VARIANT)
 
 test: ## Run the unit tests; TEST=<ClassName> runs one class
 	$(GRADLE) :$(APP_MODULE):test$(VARIANT)UnitTest $(if $(TEST),--tests '*$(TEST)*')

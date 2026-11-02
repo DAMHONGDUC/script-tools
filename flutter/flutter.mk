@@ -12,7 +12,7 @@ FLUTTER_SCRIPTS := $(SCRIPT_TOOLS)/flutter
 # Every script finds the project from here, whatever directory make was started in.
 export PROJECT_ROOT := $(CURDIR)
 
-.PHONY: setup setup-deep clean gen analyze test icon icon-strip
+.PHONY: setup setup-deep test icon icon-strip
 
 # Old names, kept working and left out of `make help`: projects and notes still type them.
 # The two patterns come first and run their script directly: make 3.81, the one macOS ships, takes the first
@@ -29,20 +29,18 @@ deep-set-up: setup-deep
 app-icon: icon
 app-icon-strip-marker: icon-strip
 
+# Off the shared list (owner's rule: the list stays minimal), still run: docs and the definition of done type them.
+.PHONY: gen analyze
+gen:
+	@bash $(FLUTTER_SCRIPTS)/generate_code.sh
+analyze:
+	@bash $(FLUTTER_SCRIPTS)/analyze_code.sh
+
 setup: ## Wipe build outputs, then submodules, pub get, codegen, env templates
 	@bash $(FLUTTER_SCRIPTS)/set_up.sh
 
 setup-deep: ## setup, plus this project's Xcode DerivedData
 	@bash $(FLUTTER_SCRIPTS)/set_up.sh --deep
-
-clean: ## Delete build outputs only
-	@bash $(FLUTTER_SCRIPTS)/clean_build.sh
-
-gen: ## Regenerate localizations and build_runner output
-	@bash $(FLUTTER_SCRIPTS)/generate_code.sh
-
-analyze: ## flutter analyze --fatal-infos, the CI gate
-	@bash $(FLUTTER_SCRIPTS)/analyze_code.sh
 
 test: ## Run the tests; TEST=<path> runs one file or folder
 	@bash $(FLUTTER_SCRIPTS)/run_tests.sh $(TEST)

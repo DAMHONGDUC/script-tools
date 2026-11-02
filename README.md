@@ -77,12 +77,12 @@ Project `Makefile` (paths relative to the project root, since make cannot handle
 
 ```make
 SCRIPT_TOOLS := packages/script-tools
-# Variant for analyze/test and the flavorless `make run`; default Debug.
+# Variant for test, lint and the flavorless `make run`; default Debug.
 VARIANT := DevDebug
 include $(SCRIPT_TOOLS)/android/android.mk
 ```
 
-The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); `make help` prints them. Android does: `setup`, `setup-deep`, `clean`, `analyze` (lint), `test [TEST=<ClassName>]`, `run-<flavor>` (installs `<Flavor>Debug`; `make run` without flavors), `apk-<flavor>` and `aab-<flavor>` (`build_release_apk.sh` / `build_release_aab.sh`), plus its own `sms SENDER=<number> BODY="<text>"`. The rest of the list says why it is not available here.
+The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); `make help` prints them. Android does: `setup`, `setup-deep`, `test [TEST=<ClassName>]`, `run-<flavor>` (installs `<Flavor>Debug`; `make run` without flavors), `apk-<flavor>` and `aab-<flavor>` (`build_release_apk.sh` / `build_release_aab.sh`), plus its own `sms SENDER=<number> BODY="<text>"`. The rest of the list says why it is not available here.
 
 ## Flutter scripts
 
@@ -103,7 +103,6 @@ Run from the project root (or set `PROJECT_ROOT`); each finds the nearest `pubsp
 | `flutter/release_ios.sh <flavor> [note]` | `prepare_env` → `deploy_firebase` → fastlane `beta` |
 | `flutter/upload_ipa.sh <flavor>` | fastlane `upload` of the IPA already built |
 | `flutter/run_app.sh <flavor> [args]` | `flutter run` with `env/<flavor>.json` as dart-defines |
-| `flutter/clean_build.sh` | `flutter clean` — build outputs only |
 | `flutter/generate_app_icon.sh` | Launcher icons + rounded launch images from `assets/images/app_icon.png` (`APP_ICON_SOURCE`) |
 | `flutter/strip_icon_marker.sh` | Erase the generator's watermark from that artwork, in place |
 
@@ -137,8 +136,6 @@ The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); 
 | --- | --- |
 | `make` / `make help` | Lists the commands |
 | `make setup` / `setup-deep` | `set_up.sh` / `set_up.sh --deep` |
-| `make clean` | `clean_build.sh` |
-| `make gen` / `analyze` | `generate_code.sh` / `analyze_code.sh` |
 | `make test [TEST=<path>]` | `run_tests.sh` |
 | `make run-<flavor>` | `run_app.sh` |
 | `make env-<flavor>` | `prepare_env.sh <flavor>` |
@@ -148,6 +145,6 @@ The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); 
 | `make upload-<flavor>` | `upload_ipa.sh` |
 | `make icon` / `icon-strip` | `generate_app_icon.sh` / `strip_icon_marker.sh` |
 
-`apk-<flavor>` and `aab-<flavor>` are on the list and say there is no Flutter Android release script yet. The old names (`set-up`, `build-ipa-<flavor>`, `app-icon`, …) still work; `common/COMMANDS.md` lists them.
+`apk-<flavor>` and `aab-<flavor>` are on the list and say there is no Flutter Android release script yet. The old names (`set-up`, `build-ipa-<flavor>`, `app-icon`, …) still work, and so do `gen` and `analyze`, taken off the list to keep it minimal; `common/COMMANDS.md` lists them.
 
 `flutter.mk` and `android.mk` both include `common/commands.mk`; include one per Makefile.

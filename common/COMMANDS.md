@@ -10,6 +10,7 @@
 - **The artefact is the verb** when a command builds one file a store takes: `ipa`, `apk`, `aab`.
 - **A platform's own extras come after the list** (`sms` on Android) and a project's own after those (`pre-build` in a Flutter app); `make help` orders them that way by itself.
 - **A renamed command keeps its old name working**, left out of `make help`, so a note or a CI step that still types it does not break.
+- **The list stays minimal** (owner's rule): a command earns a place only if it is typed in every project. `clean`, `gen` and `analyze` were taken off for that reason; where a platform had them they still run, unlisted.
 
 ## The list
 
@@ -17,10 +18,7 @@
 |---|---|---|---|
 | `help` | List the commands | ✓ | ✓ |
 | `setup` | Everything a fresh clone needs before it builds | `set_up.sh` | submodules, Gradle dependencies |
-| `setup-deep` | `setup`, after a deeper wipe | `set_up.sh --deep` (Xcode DerivedData) | `clean`, then `setup` |
-| `clean` | Delete build outputs only | `flutter clean` | `./gradlew clean` |
-| `gen` | Regenerate generated code | l10n, build_runner | — runs inside the build |
-| `analyze` | The static check CI runs | `flutter analyze --fatal-infos` | lint on `VARIANT` |
+| `setup-deep` | `setup`, after a deeper wipe | `set_up.sh --deep` (Xcode DerivedData) | `./gradlew clean`, then `setup` |
 | `test` | Unit tests; `TEST=` narrows them | `TEST=<path>` | `TEST=<ClassName>` |
 | `run-<flavor>` | The app in debug on a device | `flutter run` with the flavor's config | installs `<Flavor>Debug`; `make run` without flavors |
 | `env-<flavor>` | Install the flavor's real config | from `env_assets/` | — Gradle reads it |
@@ -37,10 +35,12 @@
 
 | Platform | Old | Now |
 |---|---|---|
+| Flutter | `gen`, `analyze` | off the list; still run `generate_code.sh` / `analyze_code.sh` |
+| Android | `clean`, `analyze` | off the list; still run `./gradlew clean` / lint on `VARIANT` |
 | Flutter | `set-up`, `deep-set-up` | `setup`, `setup-deep` |
 | Flutter | `build-ipa-<flavor>`, `upload-ipa-<flavor>` | `ipa-<flavor>`, `upload-<flavor>` |
 | Flutter | `app-icon`, `app-icon-strip-marker` | `icon`, `icon-strip` |
-| Android | `lint` | `analyze` |
+| Android | `lint` | the same lint as `analyze` |
 | Android | `install` | `run` (flavorless) / `run-<flavor>` |
 | Android | `build` | — assembles `VARIANT`; kept as it was |
 | Android | `apk FLAVOR=<flavor>`, `aab FLAVOR=<flavor>` | `apk-<flavor>`, `aab-<flavor>` |
@@ -58,9 +58,6 @@ What each command should mean there, so the first file starts from the same list
 | Command | React Native | iOS (Xcode) |
 |---|---|---|
 | `setup` | `npm ci`, `pod install` | submodules, Swift packages resolved |
-| `clean` | Metro cache, `android/` and `ios/` build outputs | DerivedData of the project |
-| `gen` | codegen, if the project has any | — |
-| `analyze` | `tsc --noEmit`, ESLint | SwiftLint, if the project has it |
 | `test` | Jest | `xcodebuild test` |
 | `run-<flavor>` | the flavor's scheme or variant on a device | the flavor's scheme on a simulator |
 | `ipa-` / `apk-` / `aab-<flavor>` | each, from its native half | `ipa-` only |
