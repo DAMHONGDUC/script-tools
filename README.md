@@ -13,12 +13,14 @@ common/             what every platform shares
   commands.mk         the one command list every platform's make file includes
   COMMANDS.md         that list, what each command means per platform, and the old names
   pull_latest.sh      `make pull` on every platform: project + submodules to their main branch heads
+  push_current.sh     `make push` on every platform: submodules, then the project, on their current branches
 common/lib/         platform-independent helpers, sourced by platform scripts
   project.sh          find the project root, read script-tools.properties, in_list for flavor checks
   ruby.sh             before fastlane or CocoaPods: ensure_utf8_locale, require_bundler
   space_free_copy.sh  build from a temporary copy when the project path has a space
   release_output.sh   put a build into <project>/Release/ and print its checksum
   log.sh              timestamped, coloured step/info/warn/fail lines
+  repos.sh            the label column and short ids for the two scripts above
 android/            scripts for Gradle Android projects
   build_release_apk.sh
   build_release_aab.sh
@@ -100,6 +102,21 @@ Add `Release/` to the project's `.gitignore`.
 
 Main branch: the project's is `origin`'s `main`, else `master`; a submodule's is its `.gitmodules` `branch`, else `main`, else `master`. The project refuses only on local changes the pull would touch; a submodule refuses on any. A submodule never initialised is initialised first.
 
+## Pushing
+
+`make push` (`common/push_current.sh`) pushes every submodule, nested ones too, then the project, each on the branch it has checked out, to `origin`. Deepest first, so no gitlink reaches `origin` before the commit it points at. It never forces and never commits; uncommitted files are named, not pushed. `DRY_RUN=1` runs `git push --dry-run` and sends nothing.
+
+| Repo is | It does |
+| --- | --- |
+| ahead of `origin` on its branch | pushes it: `main ae7991e → 169e788 (1 commit(s))` |
+| on a branch `origin` does not have | creates it there and sets the upstream: `feature/x new on origin at f995f9a` |
+| level with or behind `origin` | nothing to push: `main 561955b, already on origin` |
+| missing commits `origin` has | refuses — `make pull` or rebase first; never forced |
+| a detached submodule | fine when `origin` already holds the commit, refused otherwise |
+| recording a submodule commit no branch on `origin` holds | refused by git's own `--recurse-submodules=check` |
+
+A refused repo leaves the others to go, then the command exits 1.
+
 ## Android release builds
 
 | Script | Output |
@@ -120,7 +137,7 @@ VARIANT := DevDebug
 include $(SCRIPT_TOOLS)/android/android.mk
 ```
 
-The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); `make help` prints them. Android does: `pull`, `setup`, `setup-deep`, `test [TEST=<ClassName>]`, `run-<flavor>` (installs `<Flavor>Debug`; `make run` without flavors), `release-android-<flavor>` (`build_release_apk.sh` then `build_release_aab.sh`), plus its own `sms SENDER=<number> BODY="<text>"`. The rest of the list says why it is not available here.
+The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); `make help` prints them. Android does: `pull`, `push`, `setup`, `setup-deep`, `test [TEST=<ClassName>]`, `run-<flavor>` (installs `<Flavor>Debug`; `make run` without flavors), `release-android-<flavor>` (`build_release_apk.sh` then `build_release_aab.sh`), plus its own `sms SENDER=<number> BODY="<text>"`. The rest of the list says why it is not available here.
 
 ## Flutter scripts
 
@@ -176,6 +193,7 @@ The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); 
 | --- | --- |
 | `make` / `make help` | Lists the commands |
 | `make pull` | `common/pull_latest.sh` |
+| `make push [DRY_RUN=1]` | `common/push_current.sh` |
 | `make setup` / `setup-deep` | `set_up.sh` / `set_up.sh --deep` |
 | `make test [TEST=<path>]` | `run_tests.sh` |
 | `make run-<flavor>` | `run_app.sh` |
@@ -208,6 +226,7 @@ include $(SCRIPT_TOOLS)/ios/ios.mk
 | --- | --- |
 | `make` / `make help` | Lists the targets |
 | `make pull` | `common/pull_latest.sh` |
+| `make push [DRY_RUN=1]` | `common/push_current.sh` |
 | `make reset-xcode` / `deep-reset-xcode` | `reset_xcode.sh` / `reset_xcode.sh --all` |
 
 `ios.mk` defines `help` like the others; include one platform file per Makefile.
@@ -251,6 +270,7 @@ include $(SCRIPT_TOOLS)/react_native/react_native.mk
 | --- | --- |
 | `make` / `make help` | Lists the targets |
 | `make pull` | `common/pull_latest.sh` |
+| `make push [DRY_RUN=1]` | `common/push_current.sh` |
 | `make set-up [NO_PULL=1]` | `set_up.sh` |
 | `make run-ios [SIMULATOR="iPhone 17 Pro"]` | `npx react-native run-ios` |
 | `make run-android` | `npx react-native run-android` |

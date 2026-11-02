@@ -7,7 +7,9 @@
 # a detached submodule is put on its branch first. Local changes the move would touch refuse that repo — the
 # others still go — and the script fails at the end.
 set -eu
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/log.sh"
+lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
+source "$lib/log.sh"
+source "$lib/repos.sh"
 
 root="$(cd "${PROJECT_ROOT:-$PWD}" && git rev-parse --show-toplevel 2>/dev/null)" || fail "not inside a git repository"
 cd "$root"
@@ -50,8 +52,6 @@ origin_branch() {
   done
   return 1
 }
-
-short() { git rev-parse --short "$1"; }
 
 # Staged, unstaged and untracked paths. Submodule pointers are left out: each submodule is a repo of its own here.
 local_changes() {
@@ -165,14 +165,7 @@ pull_repo() (
   ok "$label $branch $(short "$from") → $(short "$target")"
 )
 
-# The label column fits the longest path known now; one a pull adds may run past it.
-width=$(($(basename "$root" | wc -c)))
-while read -r path; do
-  [ "${#path}" -ge "$width" ] && width=$((${#path} + 1))
-done < <(
-  git submodule foreach --quiet --recursive 'echo "$displaypath"'
-  git config -f .gitmodules --get-regexp '\.path$' 2>/dev/null | cut -d' ' -f2-
-)
+width="$(label_width)"
 
 step "pull — every repo to the head of its main branch, fast-forward only"
 refused=0

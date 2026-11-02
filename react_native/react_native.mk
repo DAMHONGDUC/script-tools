@@ -4,13 +4,16 @@
 # SCRIPT_TOOLS must be relative to the project root: make cannot handle spaces in paths.
 
 .DEFAULT_GOAL := help
-.PHONY: help pull set-up run-ios run-android ports kill-all-ports devices devices-ios devices-android
+.PHONY: help pull push set-up run-ios run-android ports kill-all-ports devices devices-ios devices-android
 
 help: ## List the targets
 	@grep -hE '^[a-z0-9%-]+:.*## ' $(MAKEFILE_LIST) | sort -u | awk -F ':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
 
 pull: ## Fast-forward the project and every submodule to the head of its main branch; never commits or pushes
 	@bash $(SCRIPT_TOOLS)/common/pull_latest.sh
+
+push: ## Push every submodule, then the project, on its current branch to origin; never forces; DRY_RUN=1
+	@bash $(SCRIPT_TOOLS)/common/push_current.sh
 
 set-up: ## Submodules, pull, npm ci, bundle install, clean pod install [NO_PULL=1]
 	bash $(SCRIPT_TOOLS)/react_native/set_up.sh
