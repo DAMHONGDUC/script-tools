@@ -115,7 +115,7 @@ Run from the project root (or set `PROJECT_ROOT`); each finds the nearest `pubsp
 
 | Script | Does |
 | --- | --- |
-| `flutter/set_up.sh [--deep]` | Wipe build outputs, submodules onto their branch, `pub get` (app, `packages/*`, `flutter/dart`), l10n, build_runner, env templates, `npm ci` in `functions/`; `--deep` also deletes the project's Xcode DerivedData |
+| `flutter/set_up.sh [--deep]` | Wipe build outputs, submodules onto their branch, `pub get` (app, `packages/*`, the packages nested in one — `packages/*/packages/*` —, `flutter/dart`), l10n, build_runner, env templates, `npm ci` in `functions/`; `--deep` also deletes the project's Xcode DerivedData |
 | `flutter/generate_code.sh` | l10n + build_runner |
 | `flutter/analyze_code.sh` | `flutter analyze --fatal-infos` |
 | `flutter/run_tests.sh [path...]` | `flutter test`, scoped to the paths given |

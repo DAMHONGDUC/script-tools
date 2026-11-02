@@ -62,8 +62,9 @@ fi
 
 step "dependencies"
 $FL pub get
-# Local packages carry their own tests and analysis, so each resolves on its own too.
-for pubspec in packages/*/pubspec.yaml; do
+# Local packages carry their own tests and analysis, so each resolves on its own too — and so does every package
+# nested one level inside one: the design kit is one package per generation under its own packages/.
+for pubspec in packages/*/pubspec.yaml packages/*/packages/*/pubspec.yaml; do
   [ -f "$pubspec" ] || continue
   package="$(dirname "$pubspec")"
   (cd "$package" && $FL pub get)

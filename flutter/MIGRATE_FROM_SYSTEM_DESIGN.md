@@ -85,7 +85,7 @@ grep -rnE "system_design/tool|packages/system_design|melos run|_common\.sh|prepa
 | Shell | POSIX `sh`, run by melos | `bash`, run by make |
 | Project root | three levels above the script, or `MELOS_ROOT_PATH` | `PROJECT_ROOT` (the Makefile sets it), else nearest `pubspec.yaml` above the cwd |
 | Accepted flavors | hard-coded `dev\|prod` | `FLAVORS` in `script-tools.properties`, default `dev prod` |
-| `pub get` in set-up | app + `packages/system_design` | app + every `packages/*/pubspec.yaml` + `script-tools/flutter/dart` |
+| `pub get` in set-up | app + `packages/system_design` | app + every `packages/*/pubspec.yaml` and `packages/*/packages/*/pubspec.yaml` + `script-tools/flutter/dart` |
 | Icon Dart tools | resolved through the kit's `image` dev dependency | own package `script-tools/flutter/dart`, `pub get` on first run |
 | Deep set-up | `MELOS_CLEAN_DERIVED=1` | `set_up.sh --deep` |
 | Melos `scripts:` | the command list | gone; `make` lists the commands |

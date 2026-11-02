@@ -56,7 +56,7 @@ include $(SCRIPT_TOOLS)/flutter/flutter.mk
 
 | Target | Example | Runs |
 |---|---|---|
-| `setup` / `setup-deep` | `make setup` | wipe, submodules on their branch, `pub get` (app + `packages/*`), l10n, build_runner, env templates, `npm ci` |
+| `setup` / `setup-deep` | `make setup` | wipe, submodules on their branch, `pub get` (app + `packages/*` + `packages/*/packages/*`), l10n, build_runner, env templates, `npm ci` |
 | `gen` / `analyze` | `make analyze` | l10n + build_runner / `flutter analyze --fatal-infos` |
 | `test` | `make test TEST=test/features/attacks/log_flow_test.dart` | `flutter test <path>` |
 | `env-<flavor>` | `make env-dev` | `env_assets/` → the paths in §4 |
