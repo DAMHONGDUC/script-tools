@@ -20,6 +20,7 @@ release-android-<flavor>  env, then build the release APK and AAB
 ## The rules
 
 - **Every platform defines every command.** One it cannot do still exists and fails with the reason — `make release-ios-prod` on Android says *an IPA is an iOS build* — so a missing command is never mistaken for a typo.
+- **Every TestFlight note opens with `<flavor> - <version> (<build>)`** (owner's rule) — `dev - 1.0.0 (1)`, on every platform. It is the default note, and a `NOTE=` is appended under it, never in its place: the flavor and the number are what the TestFlight list does not show.
 - **Verb first, flavor last, as a suffix**: `release-ios-prod`, never `release FLAVOR=prod`. The destination is typed, never defaulted.
 - **One word per verb, no hyphen inside it**: `setup`, not `set-up`. A hyphen only separates the verb from its qualifier and the flavor (`setup-deep`, `deploy-be-dev`).
 - **The list stays minimal** (owner's rule): a command earns a place only if it is typed in every project. Where a platform had a command that came off the list, it still runs, unlisted.

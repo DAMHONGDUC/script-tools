@@ -90,8 +90,10 @@ platform :ios do
       ].join(" "),
     )
 
-    notes = ENV["RELEASE_NOTES"].to_s.strip
-    notes = "#{env} · #{version} (#{build}) · #{last_git_commit[:abbreviated_commit_hash]}" if notes.empty?
+    # `dev - 1.0.0 (20)` leads every note, as in the Flutter lane; a NOTE is appended under it.
+    extra = ENV["RELEASE_NOTES"].to_s.strip
+    notes = "#{env} - #{version} (#{build})"
+    notes = "#{notes}\n\n#{extra}" unless extra.empty?
     upload_to_testflight(
       api_key: key,
       app_identifier: app_identifier,
