@@ -19,7 +19,7 @@ submodules, a two-line `Makefile`, and the files that say what the app *is*.
   env_assets/                      gitignored, real config  — optional
   ios/fastlane/Fastfile            import + sd_ios_app(...)
   ios/fastlane/{Appfile,Matchfile} the app's ids
-  ios/Gemfile                      gem "fastlane"
+  ios/Gemfile                      gem "fastlane" (CocoaPods optional: build_ipa.sh uses the machine's pod)
   .firebaserc + functions/         only with a Firebase backend
 ```
 

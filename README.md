@@ -16,7 +16,7 @@ common/             what every platform shares
   push_current.sh     `make push-all` on every platform: submodules, then the project, on their current branches
 common/lib/         platform-independent helpers, sourced by platform scripts
   project.sh          find the project root, read script-tools.properties, in_list for flavor checks
-  ruby.sh             before fastlane or CocoaPods: ensure_utf8_locale, require_bundler
+  ruby.sh             before fastlane or CocoaPods: ensure_utf8_locale, require_bundler, leave_bundle_without_cocoapods
   space_free_copy.sh  build from a temporary copy when the project path has a space
   release_output.sh   put a build into <project>/Release/ and print its checksum
   log.sh              timestamped, coloured step/info/warn/fail lines

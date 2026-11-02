@@ -75,6 +75,9 @@ if [ -f "$SPM_PINS" ]; then
   info "swift packages: resolved into $SPM_CLONE_DIR"
 fi
 
+# fastlane calls this script under `bundle exec`; Flutter checks CocoaPods before every archive.
+leave_bundle_without_cocoapods ios
+
 # Every flavor writes the same folder under the same filename, so a stale IPA would pass for this build's.
 IPA_DIR="build/ios/ipa"
 rm -rf "$IPA_DIR"
