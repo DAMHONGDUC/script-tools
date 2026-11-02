@@ -6,6 +6,8 @@ FLUTTER_TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$FLUTTER_TOOLS_DIR/../common/lib/project.sh"
 # shellcheck source=../../common/lib/log.sh
 source "$FLUTTER_TOOLS_DIR/../common/lib/log.sh"
+# shellcheck source=../../common/lib/ruby.sh
+source "$FLUTTER_TOOLS_DIR/../common/lib/ruby.sh"
 
 # Every path the scripts touch — ios/, functions/, env_assets/, pubspec.yaml — is relative to the app, so move there once.
 PROJECT_DIR="$(find_project_root pubspec.yaml)"
@@ -26,11 +28,7 @@ FLAVORS="$(project_setting "$PROJECT_DIR" FLAVORS "dev prod")"
 # Fails with the usage line unless $1 is one of FLAVORS.
 # Usage: require_flavor <flavor> "<usage line>"
 require_flavor() {
-  if [ -n "$1" ]; then
-    case " $FLAVORS " in
-      *" $1 "*) return 0 ;;
-    esac
-  fi
+  in_list "$1" "$FLAVORS" && return 0
   fail "usage: $2   (flavor: ${FLAVORS// /, })"
 }
 
@@ -59,15 +57,6 @@ has_npm_script() {
   return 0
 }
 
-# Ruby fixes its default encoding at startup from the locale, and fastlane reads the shared Fastfile with it:
-# under LANG=C every em dash in it is `invalid multibyte character`. A UTF-8 LANG already set is kept.
-ensure_utf8_locale() {
-  case "${LANG:-}" in
-    *UTF-8 | *utf8) ;;
-    *) LANG=en_US.UTF-8 ;;
-  esac
-  export LANG
-}
 
 # Runs flutter/dart/bin/<name>.dart, resolving that package the first time.
 # `--verbosity=error`: Dart prints "Running build hooks..." to stderr, which task runners label as errors.

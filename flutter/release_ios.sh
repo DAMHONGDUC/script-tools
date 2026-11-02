@@ -25,7 +25,7 @@ main() {
   fi
 
   # Here rather than minutes in, after the config is already installed.
-  command -v bundle >/dev/null 2>&1 || fail "bundler not found — cd ios && bundle install"
+  require_bundler ios
 
   # Before the lane, which compares GoogleService-Info.plist with the flavor and builds with its dart-defines.
   step "release $TARGET — 1/2 config"

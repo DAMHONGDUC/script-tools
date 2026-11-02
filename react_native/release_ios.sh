@@ -13,10 +13,7 @@ root="$(rn_project_root)"
 env="${1:-}"
 note="${2:-${NOTE:-}}"
 envs="$(project_setting "$root" FLAVORS dev)"
-case " $envs " in
-  *" $env "*) ;;
-  *) fail "Unknown environment: '${env}' (one of: $envs)" ;;
-esac
+in_list "$env" "$envs" || fail "Unknown environment: '${env}' (one of: $envs)"
 
 step "release iOS — $env"
 [ "$(uname)" = Darwin ] || fail "iOS builds need macOS"
@@ -46,9 +43,9 @@ if [ -n "$(git -C "$root" status --porcelain --untracked-files=no)" ]; then
 fi
 
 rm -rf "$output_dir"
-# CocoaPods and fastlane both fail on a non-UTF-8 locale.
-(cd "$root/ios" && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
-  RN_WORKSPACE="$(basename "$workspace")" RN_SCHEME="$scheme" RN_APP_IDENTIFIER="$app_identifier" \
+require_bundler ios
+ensure_utf8_locale
+(cd "$root/ios" && RN_WORKSPACE="$(basename "$workspace")" RN_SCHEME="$scheme" RN_APP_IDENTIFIER="$app_identifier" \
   RN_OUTPUT_DIR="$output_dir" IOS_TEAM_ID="$team_id" RELEASE_ENV="$env" RELEASE_NOTES="$note" \
   bundle exec fastlane ios beta)
 

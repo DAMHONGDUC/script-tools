@@ -26,8 +26,8 @@ if [ "$(uname)" = Darwin ] && [ -f ios/Podfile ]; then
   # A clean install, so pods match package.json after a pull or a branch switch.
   info "removing ios/Pods, ios/Podfile.lock and ios/build"
   rm -rf ios/Pods ios/Podfile.lock ios/build
-  # CocoaPods crashes with an encoding error when the shell locale is not UTF-8.
-  (cd ios && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 bundle exec pod install --repo-update)
+  ensure_utf8_locale
+  (cd ios && bundle exec pod install --repo-update)
 else
   warn "skipping CocoaPods: iOS builds need macOS"
 fi

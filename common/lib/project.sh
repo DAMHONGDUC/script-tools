@@ -41,3 +41,13 @@ project_setting() {
 capitalize() {
   printf '%s%s\n' "$(printf '%s' "${1:0:1}" | tr '[:lower:]' '[:upper:]')" "${1:1}"
 }
+
+# True when $1 is one word of the space-separated list $2 — a flavor in FLAVORS, an env in a list.
+# Usage: in_list <word> "<list>"
+in_list() {
+  [ -n "$1" ] || return 1
+  case " $2 " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}

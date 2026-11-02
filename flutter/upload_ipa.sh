@@ -11,7 +11,7 @@ IPA_DIR="build/ios/ipa"
 # Named before fastlane spends a minute on App Store Connect to say the same thing.
 ls "$IPA_DIR"/*.ipa >/dev/null 2>&1 || fail "no .ipa in $IPA_DIR — run release_ios.sh $TARGET"
 
-command -v bundle >/dev/null 2>&1 || fail "bundler not found — cd ios && bundle install"
+require_bundler ios
 
 ensure_utf8_locale
 

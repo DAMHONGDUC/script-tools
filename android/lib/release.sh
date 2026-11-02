@@ -47,10 +47,7 @@ build_android_release() {
   local flavor="" flavor_title="" variant_dir="release" bundle_dir="release" file_suffix="release"
   if [ -n "$flavors" ]; then
     flavor="${FLAVOR:-$default_flavor}"
-    case " $flavors " in
-      *" $flavor "*) ;;
-      *) echo "Unknown flavor: $flavor (FLAVOR must be one of: $flavors)" >&2; exit 1 ;;
-    esac
+    in_list "$flavor" "$flavors" || { echo "Unknown flavor: $flavor (FLAVOR must be one of: $flavors)" >&2; exit 1; }
     flavor_title="$(capitalize "$flavor")"
     variant_dir="$flavor/release"
     bundle_dir="${flavor}Release"

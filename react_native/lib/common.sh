@@ -7,6 +7,8 @@ rn_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$rn_lib_dir/../../common/lib/log.sh"
 # shellcheck source=../../common/lib/project.sh
 source "$rn_lib_dir/../../common/lib/project.sh"
+# shellcheck source=../../common/lib/ruby.sh
+source "$rn_lib_dir/../../common/lib/ruby.sh"
 
 # The React Native project: $PROJECT_ROOT, else the nearest folder holding script-tools.properties or package.json.
 rn_project_root() {

@@ -13,7 +13,8 @@ common/             what every platform shares
   commands.mk         the one command list every platform's make file includes
   COMMANDS.md         that list, what each command means per platform, and the old names
 common/lib/         platform-independent helpers, sourced by platform scripts
-  project.sh          find the project root, read script-tools.properties
+  project.sh          find the project root, read script-tools.properties, in_list for flavor checks
+  ruby.sh             before fastlane or CocoaPods: ensure_utf8_locale, require_bundler
   space_free_copy.sh  build from a temporary copy when the project path has a space
   release_output.sh   put a build into <project>/Release/ and print its checksum
   log.sh              timestamped, coloured step/info/warn/fail lines
@@ -45,7 +46,7 @@ Conventions for new scripts:
 
 1. One top-level folder per platform (`android/`, `flutter/`, `ios/`, ...); a folder is added with its first script.
 2. Runnable scripts sit directly in the platform folder as `<verb>_<object>.sh`; sourced helpers go in its `lib/`.
-3. Anything two platforms need moves to `common/lib/`; platform folders never source each other.
+3. Anything two platforms need moves to `common/lib/` — including logic two platforms wrote out by hand under different names (a locale guard, a flavor check), found by searching for the pattern, not only the function name; platform folders never source each other.
 4. Every script finds the project from the current directory (or `PROJECT_ROOT`) and reads its settings from `<project>/script-tools.properties`. Keys shared by all platforms have no prefix; platform-only keys start with the platform name (`ANDROID_`, `FLUTTER_`, `IOS_`).
 
 ## Settings
