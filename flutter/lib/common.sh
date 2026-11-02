@@ -80,3 +80,15 @@ run_dart_tool() {
   fi
   $DT run --verbosity=error "$package/bin/$name.dart" "$@"
 }
+
+# Installs flavor $1's real config from env_assets/ — the first step of every command that builds or deploys
+# (owner's rule), so nothing runs against whichever config the checkout last held. An app with no env_assets/
+# keeps no flavored config, and says so rather than skipping silently.
+# Usage: install_flavor_config <flavor>
+install_flavor_config() {
+  if [ -d env_assets ]; then
+    bash "$FLUTTER_TOOLS_DIR/prepare_env.sh" "$1"
+  else
+    info "no env_assets/ — this app keeps no flavored config, nothing to install"
+  fi
+}

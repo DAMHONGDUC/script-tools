@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# One flavor end to end: install its config, deploy its backend, ship to TestFlight. Runs unattended.
+# One flavor's iOS release: install its config, then build the IPA and ship it to TestFlight. Runs unattended.
 # Usage: <script-tools>/flutter/release_ios.sh <flavor> [release note]
 #
 # It does not set up first: a tree that needs restoring is restored by set_up.sh, on purpose.
+# It deploys no backend: that is deploy_backend.sh, its own command (owner's rule).
 set -eu
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
@@ -23,42 +24,16 @@ main() {
     info "no note given — the lane attaches \"$TARGET - <version> (<build>)\""
   fi
 
-  # Here rather than 25 minutes in, with the backend already deployed.
+  # Here rather than minutes in, after the config is already installed.
   command -v bundle >/dev/null 2>&1 || fail "bundler not found — cd ios && bundle install"
 
-  # Which steps this app has. A skip is always announced by name; none is silent.
-  HAS_CONFIG=0
-  [ -d env_assets ] && HAS_CONFIG=1
-  HAS_BACKEND=0
-  has_firebase && HAS_BACKEND=1
-
-  # TestFlight is the one step every app has. Only steps that RUN are counted.
-  TOTAL=$((HAS_CONFIG + HAS_BACKEND + 1))
-  DONE=0
-  phase() {
-    DONE=$((DONE + 1))
-    step "release $TARGET — $DONE/$TOTAL $1"
-  }
-
-  # The order is the point: config must be in the tree before the deploy reads functions/.env and before the lane
-  # compares GoogleService-Info.plist with the flavor.
-  if [ "$HAS_CONFIG" = 1 ]; then
-    phase config
-    bash "$FLUTTER_TOOLS_DIR/prepare_env.sh" "$TARGET"
-  else
-    info "no env_assets/ — this app keeps no flavored config, nothing to install"
-  fi
-
-  if [ "$HAS_BACKEND" = 1 ]; then
-    phase firebase
-    bash "$FLUTTER_TOOLS_DIR/deploy_firebase.sh" "$TARGET"
-  else
-    info "no .firebaserc — this app runs no Firebase backend, nothing to deploy"
-  fi
+  # Before the lane, which compares GoogleService-Info.plist with the flavor and builds with its dart-defines.
+  step "release $TARGET — 1/2 config"
+  install_flavor_config "$TARGET"
 
   ensure_utf8_locale
 
-  phase testflight
+  step "release $TARGET — 2/2 ipa and testflight"
   (cd ios && bundle exec fastlane beta flavor:"$TARGET" bump:true)
 
   done_msg "released $TARGET"

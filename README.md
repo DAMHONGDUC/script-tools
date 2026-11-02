@@ -26,7 +26,7 @@ flutter/            scripts for Flutter apps (iOS release via fastlane, Firebase
   set_up.sh ...       one per command, see "Flutter scripts"
   flutter.mk          make targets for the project Makefile — the shared command list
   lib/common.sh       project root, fvm-aware FL/DT, flavor and project checks
-  lib/android_build.sh  release APK/AAB shared by build_apk.sh and build_aab.sh
+  lib/android_build.sh  release APK/AAB build used by release_android.sh
   dart/               Dart package for the icon image tools (bin/*.dart)
   fastlane/Fastfile   shared iOS lanes: beta, upload, preflight, certificates
 ```
@@ -83,7 +83,7 @@ VARIANT := DevDebug
 include $(SCRIPT_TOOLS)/android/android.mk
 ```
 
-The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); `make help` prints them. Android does: `setup`, `setup-deep`, `test [TEST=<ClassName>]`, `run-<flavor>` (installs `<Flavor>Debug`; `make run` without flavors), `apk-<flavor>` and `aab-<flavor>` (`build_release_apk.sh` / `build_release_aab.sh`), plus its own `sms SENDER=<number> BODY="<text>"`. The rest of the list says why it is not available here.
+The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); `make help` prints them. Android does: `setup`, `setup-deep`, `test [TEST=<ClassName>]`, `run-<flavor>` (installs `<Flavor>Debug`; `make run` without flavors), `release-android-<flavor>` (`build_release_apk.sh` then `build_release_aab.sh`), plus its own `sms SENDER=<number> BODY="<text>"`. The rest of the list says why it is not available here.
 
 ## Flutter scripts
 
@@ -101,10 +101,11 @@ Run from the project root (or set `PROJECT_ROOT`); each finds the nearest `pubsp
 | `flutter/prepare_env.sh <flavor>` | Copy `env_assets/` into `env/`, `ios/`, `android/`, `functions/` |
 | `flutter/deploy_firebase.sh <flavor> [rules\|functions]` | Firestore rules + indexes, functions (tested first) |
 | `flutter/build_ipa.sh <flavor> [args]` | `flutter build ipa` with `env/<flavor>.json` as dart-defines |
-| `flutter/release_ios.sh <flavor> [note]` | `prepare_env` → `deploy_firebase` → fastlane `beta` |
+| `flutter/release_ios.sh <flavor> [note]` | `prepare_env` → fastlane `beta` (builds the IPA, uploads to TestFlight); deploys no backend |
 | `flutter/upload_ipa.sh <flavor>` | fastlane `upload` of the IPA already built |
 | `flutter/run_app.sh <flavor> [args]` | `flutter run` with `env/<flavor>.json` as dart-defines |
-| `flutter/build_apk.sh <flavor> [args]` / `build_aab.sh` | `prepare_env` (when `env_assets/` exists) → `flutter build apk` / `appbundle` → `Release/<flavor>-<APP_NAME>-<version>-<build>.<apk\|aab>` |
+| `flutter/deploy_backend.sh <flavor> [rules\|functions]` | `prepare_env` → `deploy_firebase.sh` when `.firebaserc` exists, else says there is nothing to deploy |
+| `flutter/release_android.sh <flavor> [args]` | `prepare_env` → `flutter build apk` → `appbundle`, each into `Release/<flavor>-<APP_NAME>-<version>-<build>.<apk\|aab>` |
 | `flutter/generate_app_icon.sh` | Launcher icons + rounded launch images from `assets/images/app_icon.png` (`APP_ICON_SOURCE`) |
 | `flutter/strip_icon_marker.sh` | Erase the generator's watermark from that artwork, in place |
 
@@ -123,7 +124,7 @@ sd_ios_app(team_id: "…", targets: [{ name: "Runner", bundle_id: "…" }])
 | `flavors` | Default `%w[dev prod]`: the values `flavor:` accepts and the `.firebaserc` aliases it looks up. |
 | `script_tools` / `design_system` | Submodule paths from the repo root; default `packages/script-tools`, `packages/flutter-system-design-kit`. |
 
-No `.firebaserc` means no backend: `release_ios.sh` skips the deploy and the lane skips the flavored-config check, both announced. A lane defined below the import overrides the shared one of the same name.
+No `.firebaserc` means no backend: `deploy_backend.sh` says there is nothing to deploy and the lane skips the flavored-config check, both announced. A lane defined below the import overrides the shared one of the same name.
 
 ## Flutter make targets
 
@@ -141,13 +142,11 @@ The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); 
 | `make test [TEST=<path>]` | `run_tests.sh` |
 | `make run-<flavor>` | `run_app.sh` |
 | `make env-<flavor>` | `prepare_env.sh <flavor>` |
-| `make deploy-<flavor> [ONLY=rules\|functions]` | `deploy_firebase.sh` |
-| `make ipa-<flavor>` | `build_ipa.sh` |
-| `make apk-<flavor>` / `aab-<flavor>` | `build_apk.sh` / `build_aab.sh` |
-| `make release-<flavor> [NOTE="..."]` | `release_ios.sh` |
-| `make upload-<flavor>` | `upload_ipa.sh` |
+| `make deploy-be-<flavor> [ONLY=rules\|functions]` | `deploy_backend.sh` |
+| `make release-ios-<flavor> [NOTE="..."]` | `release_ios.sh` |
+| `make release-android-<flavor>` | `release_android.sh` |
 | `make icon` / `icon-strip` | `generate_app_icon.sh` / `strip_icon_marker.sh` |
 
-The old names (`set-up`, `build-ipa-<flavor>`, `app-icon`, …) still work, and so do `gen` and `analyze`, taken off the list to keep it minimal; `common/COMMANDS.md` lists them.
+Every deploy and release installs the flavor's config first. The old names (`set-up`, `build-ipa-<flavor>`, `upload-ipa-<flavor>`, `release-<flavor>`, …) still work, and so do `gen` and `analyze`; `common/COMMANDS.md` lists them.
 
 `flutter.mk` and `android.mk` both include `common/commands.mk`; include one per Makefile.

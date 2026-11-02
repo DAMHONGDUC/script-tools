@@ -1,30 +1,20 @@
 #!/usr/bin/env bash
-# Flutter Android release build shared by build_apk.sh and build_aab.sh. Source this file after lib/common.sh.
+# Flutter Android release build, used by release_android.sh. Source this file after lib/common.sh.
 #
-# Installs the flavor's config first, the way release_ios.sh does: an APK built against whichever env/ and
-# google-services.json the checkout last held is a build of the wrong environment with nothing to say so.
+# It builds only: the caller installs the flavor's config first (install_flavor_config), once for both formats.
 
 # shellcheck source=../../common/lib/release_output.sh
 source "$FLUTTER_TOOLS_DIR/../common/lib/release_output.sh"
 
 # Usage: build_flutter_android apk|aab <flavor> [flutter build args...]
 build_flutter_android() {
-  local format="$1" target="${2:-}" command artifact
-  shift
+  local format="$1" target="$2" command artifact
+  shift 2
   case "$format" in
     apk) command="apk"; artifact="build/app/outputs/flutter-apk/app-release.apk" ;;
     aab) command="appbundle"; artifact="build/app/outputs/bundle/release/app-release.aab" ;;
     *) fail "unknown format: $format (apk or aab)" ;;
   esac
-  require_flavor "$target" "build_$format.sh <flavor> [flutter build $command args...]"
-  shift
-
-  # The config this flavor builds with, installed before anything reads it. A skip is announced, never silent.
-  if [ -d env_assets ]; then
-    bash "$FLUTTER_TOOLS_DIR/prepare_env.sh" "$target"
-  else
-    info "no env_assets/ — this app keeps no flavored config, nothing to install"
-  fi
 
   # Same rule as build_ipa.sh: a template declares config, so a missing real file is an error.
   local env_file="env/$target.json" template
@@ -51,7 +41,6 @@ build_flutter_android() {
   version=$(grep '^version:' pubspec.yaml | head -1 | cut -d' ' -f2)
   app_name="$(project_setting "$PROJECT_DIR" APP_NAME "$(basename "$PROJECT_DIR")")"
 
-  step "build $format — $target $version"
   rm -f "$artifact"
   $FL build "$command" --release "$@"
 
@@ -59,5 +48,4 @@ build_flutter_android() {
   local published
   published="$(publish_release_file "$PROJECT_DIR" "$artifact" "$target-$app_name-${version/+/-}" "$format" "$target-")"
   print_release_summary "$published"
-  done_msg "built $target $version $format"
 }

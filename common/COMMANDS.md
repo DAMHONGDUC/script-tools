@@ -1,18 +1,30 @@
 # One command list for every platform
 
-**Every platform's make file answers to the same commands, in the same order** (owner's rule). The owner works across many projects on several platforms; a command that is `lint` in one and `analyze` in the next, or `apk FLAVOR=prod` here and `build-ipa-prod` there, is a command that gets forgotten. So the list is fixed here, `common/commands.mk` holds it, and `make help` prints the same lines in every project.
+**Every platform's make file answers to the same commands, in the same order** (owner's rule). The owner works across many projects on several platforms; a command named one way in one project and another way in the next is a command that gets forgotten. So the list is fixed here, `common/commands.mk` holds it, and `make help` prints the same lines in every project.
+
+## Three parts
+
+Everything that leaves the machine is one of three commands, and **the first is part of the other two** (owner's rule):
+
+```text
+env-<flavor>              install the flavor's config
+deploy-be-<flavor>        env, then deploy the backend
+release-ios-<flavor>      env, then build the IPA and upload it to TestFlight
+release-android-<flavor>  env, then build the release APK and AAB
+```
+
+- **Every deploy and every release installs the flavor's config first, by itself.** A file built or a backend deployed against whichever config the checkout last held is the wrong environment with nothing to say so. A project with no flavored config says so and goes on.
+- **The backend is its own command, never a step of a release** (owner's rule). A release builds and ships the app; `deploy-be-<flavor>` deploys the backend — Firebase when the project has `.firebaserc`, and without one it says there is nothing to deploy and stops.
+- **One release per store, named by the platform**: `release-ios-` and `release-android-`, so the command says where the build goes.
 
 ## The rules
 
-- **Every platform defines every command.** One it cannot do still exists and fails with the reason — `make ipa-prod` on Android says *an IPA is an iOS build* — so a missing command is never mistaken for a typo.
-- **Verb first, flavor last, as a suffix**: `release-prod`, never `release FLAVOR=prod`. The destination is typed, never defaulted.
-- **One word per verb, no hyphen inside it**: `setup`, not `set-up`. A hyphen only separates the verb from the flavor or a qualifier (`setup-deep`, `icon-strip`).
-- **The artefact is the verb** when a command builds one file a store takes: `ipa`, `apk`, `aab`.
+- **Every platform defines every command.** One it cannot do still exists and fails with the reason — `make release-ios-prod` on Android says *an IPA is an iOS build* — so a missing command is never mistaken for a typo.
+- **Verb first, flavor last, as a suffix**: `release-ios-prod`, never `release FLAVOR=prod`. The destination is typed, never defaulted.
+- **One word per verb, no hyphen inside it**: `setup`, not `set-up`. A hyphen only separates the verb from its qualifier and the flavor (`setup-deep`, `deploy-be-dev`).
+- **The list stays minimal** (owner's rule): a command earns a place only if it is typed in every project. Where a platform had a command that came off the list, it still runs, unlisted.
 - **A platform's own extras come after the list** (`sms` on Android) and a project's own after those (`pre-build` in a Flutter app); `make help` orders them that way by itself.
 - **A renamed command keeps its old name working**, left out of `make help`, so a note or a CI step that still types it does not break.
-- **A store build installs its flavor's config first** (owner's rule): `apk-`, `aab-` and `release-` run the env step before they build, so a file is never built against whichever config the checkout last held. A project with no flavored config says so and goes on.
-- **A release deploys the backend only when there is one** (owner's rule): Firebase is deployed when the project has `.firebaserc`; without it the step is skipped, by name.
-- **The list stays minimal** (owner's rule): a command earns a place only if it is typed in every project. `clean`, `gen` and `analyze` were taken off for that reason; where a platform had them they still run, unlisted.
 
 ## The list
 
@@ -23,29 +35,27 @@
 | `setup-deep` | `setup`, after a deeper wipe | `set_up.sh --deep` (Xcode DerivedData) | `./gradlew clean`, then `setup` |
 | `test` | Unit tests; `TEST=` narrows them | `TEST=<path>` | `TEST=<ClassName>` |
 | `run-<flavor>` | The app in debug on a device | `flutter run` with the flavor's config | installs `<Flavor>Debug`; `make run` without flavors |
-| `env-<flavor>` | Install the flavor's real config | from `env_assets/` | — Gradle reads it |
-| `deploy-<flavor>` | Deploy the backend | Firebase; `ONLY=rules\|functions` | — |
-| `ipa-<flavor>` | Release IPA | ✓ | — |
-| `apk-<flavor>` | Release APK into `Release/` | config, then `flutter build apk` | signed — Gradle reads its own config |
-| `aab-<flavor>` | Release AAB into `Release/` | config, then `flutter build appbundle` | signed — Gradle reads its own config |
-| `release-<flavor>` | Ship the flavor to its store | config, Firebase deploy if `.firebaserc`, TestFlight; `NOTE=` | — no Play upload yet |
-| `upload-<flavor>` | Upload a build already made | TestFlight | — |
+| `env-<flavor>` | Install the flavor's config | from `env_assets/` | — Gradle reads it |
+| `deploy-be-<flavor>` | Config, then the backend | Firebase if `.firebaserc`; `ONLY=rules\|functions` | — |
+| `release-ios-<flavor>` | Config, IPA, TestFlight | `fastlane beta`; `NOTE=` for What to Test | — |
+| `release-android-<flavor>` | Config, release APK and AAB into `Release/` | `flutter build apk` + `appbundle` | signed APK + AAB |
 | `icon` | Every app icon from the artwork | ✓ | — |
 | `icon-strip` | Erase the generator's watermark from the artwork | ✓ | — |
 
-## Old names that still work
+## Off the list, still running
 
-| Platform | Old | Now |
+| Platform | Name | Runs |
 |---|---|---|
-| Flutter | `gen`, `analyze` | off the list; still run `generate_code.sh` / `analyze_code.sh` |
-| Android | `clean`, `analyze` | off the list; still run `./gradlew clean` / lint on `VARIANT` |
+| Flutter | `gen`, `analyze` | `generate_code.sh` / `analyze_code.sh` |
 | Flutter | `set-up`, `deep-set-up` | `setup`, `setup-deep` |
-| Flutter | `build-ipa-<flavor>`, `upload-ipa-<flavor>` | `ipa-<flavor>`, `upload-<flavor>` |
 | Flutter | `app-icon`, `app-icon-strip-marker` | `icon`, `icon-strip` |
-| Android | `lint` | the same lint as `analyze` |
-| Android | `install` | `run` (flavorless) / `run-<flavor>` |
-| Android | `build` | — assembles `VARIANT`; kept as it was |
-| Android | `apk FLAVOR=<flavor>`, `aab FLAVOR=<flavor>` | `apk-<flavor>`, `aab-<flavor>` |
+| Flutter | `build-ipa-<flavor>` | the IPA alone, no config step |
+| Flutter | `upload-ipa-<flavor>` | upload the IPA already built — the retry when TestFlight was not reached |
+| Flutter | `deploy-<flavor>` | `deploy-be-<flavor>` |
+| Flutter | `release-<flavor>` | the old release: `deploy-be-<flavor>`, then `release-ios-<flavor>` |
+| Android | `clean`, `analyze` / `lint` | `./gradlew clean` / lint on `VARIANT` |
+| Android | `install`, `build` | install / assemble `VARIANT` |
+| Android | `apk FLAVOR=<flavor>`, `aab FLAVOR=<flavor>` | one format alone |
 
 ## Adding a platform
 
@@ -53,7 +63,8 @@ React Native and native iOS have no folder yet; each gets one with its first scr
 
 1. Sets `PLATFORM := <Name>` and includes `$(SCRIPT_TOOLS)/common/commands.mk` before any target.
 2. Defines **every** command in the list, a `## ` description on each, and `$(call not_on,<reason>)` as the whole recipe of one it cannot do.
-3. Adds its extras after the list, and no command that means the same as one on the list under another name.
+3. Puts every specific pattern (`release-ios-%`) above any general one (`release-%`): make 3.81, the one macOS ships, takes the first pattern that matches.
+4. Adds its extras after the list, and no command that means the same as one on the list under another name.
 
 What each command should mean there, so the first file starts from the same list:
 
@@ -62,5 +73,7 @@ What each command should mean there, so the first file starts from the same list
 | `setup` | `npm ci`, `pod install` | submodules, Swift packages resolved |
 | `test` | Jest | `xcodebuild test` |
 | `run-<flavor>` | the flavor's scheme or variant on a device | the flavor's scheme on a simulator |
-| `ipa-` / `apk-` / `aab-<flavor>` | each, from its native half | `ipa-` only |
-| `release-` / `upload-<flavor>` | the shared fastlane lanes | the shared fastlane lanes |
+| `env-<flavor>` | the flavor's `.env` | the flavor's xcconfig |
+| `deploy-be-<flavor>` | the backend, if the project has one | the backend, if the project has one |
+| `release-ios-<flavor>` | the shared fastlane `beta` lane | the shared fastlane `beta` lane |
+| `release-android-<flavor>` | Gradle release APK + AAB | — |

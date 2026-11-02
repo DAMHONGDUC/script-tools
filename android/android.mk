@@ -50,23 +50,15 @@ run-%: ## Install the flavor's debug build on the connected device; `make run` w
 env-%: ## Install the flavor's real config
 	$(call not_on,Gradle reads each flavor's config itself)
 
-deploy-%: ## Deploy the backend
+deploy-be-%: ## Install the flavor's config, then deploy its backend
 	$(call not_on,no backend script for Android projects)
 
-ipa-%: ## Build the flavor's release IPA
+release-ios-%: ## Build the IPA and upload it to TestFlight
 	$(call not_on,an IPA is an iOS build)
 
-apk-%: ## Signed release APK into Release/
+release-android-%: ## Signed release APK and AAB into Release/
 	FLAVOR=$* $(SCRIPT_TOOLS)/android/build_release_apk.sh
-
-aab-%: ## Signed release AAB into Release/
 	FLAVOR=$* $(SCRIPT_TOOLS)/android/build_release_aab.sh
-
-release-%: ## Ship the flavor to its store
-	$(call not_on,no Play upload script yet — make aab-<flavor> and upload it in Play Console)
-
-upload-%: ## Upload the build already made to its store
-	$(call not_on,no Play upload script yet — upload Release/ in Play Console)
 
 icon: ## Every launcher icon from the app's icon artwork
 	$(call not_on,no icon script for Android projects)

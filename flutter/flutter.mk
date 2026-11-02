@@ -2,8 +2,11 @@
 #   SCRIPT_TOOLS := packages/script-tools
 #   include $(SCRIPT_TOOLS)/flutter/flutter.mk
 # SCRIPT_TOOLS must be relative to the project root: make cannot handle spaces in paths.
-# Flavored targets take the flavor as a suffix (release-dev), so the destination is typed, never defaulted.
+# Flavored targets take the flavor as a suffix (release-ios-dev), so the destination is typed, never defaulted.
 # The command names are the shared list in common/COMMANDS.md — the same in every platform's file.
+#
+# make 3.81, the one macOS ships, takes the FIRST pattern that matches: every specific pattern (release-ios-%,
+# deploy-be-%, build-ipa-%) sits above the old general names (release-%, deploy-%) at the end of this file.
 
 PLATFORM := Flutter
 include $(SCRIPT_TOOLS)/common/commands.mk
@@ -13,28 +16,6 @@ FLUTTER_SCRIPTS := $(SCRIPT_TOOLS)/flutter
 export PROJECT_ROOT := $(CURDIR)
 
 .PHONY: setup setup-deep test icon icon-strip
-
-# Old names, kept working and left out of `make help`: projects and notes still type them.
-# The two patterns come first and run their script directly: make 3.81, the one macOS ships, takes the first
-# pattern that matches, and `upload-%` would otherwise read `upload-ipa-prod` as the flavor `ipa-prod`.
-build-ipa-%:
-	@bash $(FLUTTER_SCRIPTS)/build_ipa.sh $*
-
-upload-ipa-%:
-	@bash $(FLUTTER_SCRIPTS)/upload_ipa.sh $*
-
-.PHONY: set-up deep-set-up app-icon app-icon-strip-marker
-set-up: setup
-deep-set-up: setup-deep
-app-icon: icon
-app-icon-strip-marker: icon-strip
-
-# Off the shared list (owner's rule: the list stays minimal), still run: docs and the definition of done type them.
-.PHONY: gen analyze
-gen:
-	@bash $(FLUTTER_SCRIPTS)/generate_code.sh
-analyze:
-	@bash $(FLUTTER_SCRIPTS)/analyze_code.sh
 
 setup: ## Wipe build outputs, then submodules, pub get, codegen, env templates
 	@bash $(FLUTTER_SCRIPTS)/set_up.sh
@@ -51,26 +32,44 @@ run-%: ## Run the app in debug with the flavor's config
 env-%: ## Install the flavor's real config from env_assets/
 	@bash $(FLUTTER_SCRIPTS)/prepare_env.sh $*
 
-deploy-%: ## Deploy the backend (Firebase rules, indexes, functions); ONLY=rules|functions
-	@bash $(FLUTTER_SCRIPTS)/deploy_firebase.sh $* $(ONLY)
+deploy-be-%: ## Install the flavor's config, then deploy its backend (Firebase if any); ONLY=rules|functions
+	@bash $(FLUTTER_SCRIPTS)/deploy_backend.sh $* $(ONLY)
 
-ipa-%: ## Build the flavor's release IPA into build/ios/ipa
-	@bash $(FLUTTER_SCRIPTS)/build_ipa.sh $*
-
-apk-%: ## Install the flavor's config, then its release APK into Release/
-	@bash $(FLUTTER_SCRIPTS)/build_apk.sh $*
-
-aab-%: ## Install the flavor's config, then its release AAB into Release/
-	@bash $(FLUTTER_SCRIPTS)/build_aab.sh $*
-
-release-%: ## Ship the flavor: config, backend deploy, TestFlight; NOTE="..." for What to Test
+release-ios-%: ## Install the flavor's config, build the IPA, upload to TestFlight; NOTE="..." for What to Test
 	@bash $(FLUTTER_SCRIPTS)/release_ios.sh $* "$(NOTE)"
 
-upload-%: ## Upload the build already made to TestFlight, without rebuilding
-	@bash $(FLUTTER_SCRIPTS)/upload_ipa.sh $*
+release-android-%: ## Install the flavor's config, build the release APK and AAB into Release/
+	@bash $(FLUTTER_SCRIPTS)/release_android.sh $*
 
 icon: ## Every launcher and launch screen icon from assets/images/app_icon.png
 	@bash $(FLUTTER_SCRIPTS)/generate_app_icon.sh
 
 icon-strip: ## Erase the generator's watermark from the icon artwork, in place
 	@bash $(FLUTTER_SCRIPTS)/strip_icon_marker.sh
+
+# Off the shared list (owner's rule: the list stays minimal), still run: docs and the definition of done type them.
+.PHONY: gen analyze
+gen:
+	@bash $(FLUTTER_SCRIPTS)/generate_code.sh
+analyze:
+	@bash $(FLUTTER_SCRIPTS)/analyze_code.sh
+
+# Old names, kept working and left out of `make help`: projects and notes still type them.
+.PHONY: set-up deep-set-up app-icon app-icon-strip-marker
+set-up: setup
+deep-set-up: setup-deep
+app-icon: icon
+app-icon-strip-marker: icon-strip
+
+# The IPA alone, and the upload of one already built — what release-ios-% does in one go, kept for a retry.
+build-ipa-%:
+	@bash $(FLUTTER_SCRIPTS)/build_ipa.sh $*
+upload-ipa-%:
+	@bash $(FLUTTER_SCRIPTS)/upload_ipa.sh $*
+
+# Last, below every specific pattern. The old release did both halves, so it still does.
+deploy-%:
+	@bash $(FLUTTER_SCRIPTS)/deploy_backend.sh $* $(ONLY)
+release-%:
+	@bash $(FLUTTER_SCRIPTS)/deploy_backend.sh $*
+	@bash $(FLUTTER_SCRIPTS)/release_ios.sh $* "$(NOTE)"
