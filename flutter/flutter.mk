@@ -57,11 +57,11 @@ deploy-%: ## Deploy the backend (Firebase rules, indexes, functions); ONLY=rules
 ipa-%: ## Build the flavor's release IPA into build/ios/ipa
 	@bash $(FLUTTER_SCRIPTS)/build_ipa.sh $*
 
-apk-%: ## Build the flavor's release APK
-	$(call not_on,no Android release script yet — add flutter/build_apk.sh)
+apk-%: ## Install the flavor's config, then its release APK into Release/
+	@bash $(FLUTTER_SCRIPTS)/build_apk.sh $*
 
-aab-%: ## Build the flavor's release AAB
-	$(call not_on,no Android release script yet — add flutter/build_aab.sh)
+aab-%: ## Install the flavor's config, then its release AAB into Release/
+	@bash $(FLUTTER_SCRIPTS)/build_aab.sh $*
 
 release-%: ## Ship the flavor: config, backend deploy, TestFlight; NOTE="..." for What to Test
 	@bash $(FLUTTER_SCRIPTS)/release_ios.sh $* "$(NOTE)"

@@ -10,6 +10,8 @@
 - **The artefact is the verb** when a command builds one file a store takes: `ipa`, `apk`, `aab`.
 - **A platform's own extras come after the list** (`sms` on Android) and a project's own after those (`pre-build` in a Flutter app); `make help` orders them that way by itself.
 - **A renamed command keeps its old name working**, left out of `make help`, so a note or a CI step that still types it does not break.
+- **A store build installs its flavor's config first** (owner's rule): `apk-`, `aab-` and `release-` run the env step before they build, so a file is never built against whichever config the checkout last held. A project with no flavored config says so and goes on.
+- **A release deploys the backend only when there is one** (owner's rule): Firebase is deployed when the project has `.firebaserc`; without it the step is skipped, by name.
 - **The list stays minimal** (owner's rule): a command earns a place only if it is typed in every project. `clean`, `gen` and `analyze` were taken off for that reason; where a platform had them they still run, unlisted.
 
 ## The list
@@ -24,9 +26,9 @@
 | `env-<flavor>` | Install the flavor's real config | from `env_assets/` | — Gradle reads it |
 | `deploy-<flavor>` | Deploy the backend | Firebase; `ONLY=rules\|functions` | — |
 | `ipa-<flavor>` | Release IPA | ✓ | — |
-| `apk-<flavor>` | Release APK | — no script yet | signed, into `Release/` |
-| `aab-<flavor>` | Release AAB | — no script yet | signed, into `Release/` |
-| `release-<flavor>` | Ship the flavor to its store | config, deploy, TestFlight; `NOTE=` | — no Play upload yet |
+| `apk-<flavor>` | Release APK into `Release/` | config, then `flutter build apk` | signed — Gradle reads its own config |
+| `aab-<flavor>` | Release AAB into `Release/` | config, then `flutter build appbundle` | signed — Gradle reads its own config |
+| `release-<flavor>` | Ship the flavor to its store | config, Firebase deploy if `.firebaserc`, TestFlight; `NOTE=` | — no Play upload yet |
 | `upload-<flavor>` | Upload a build already made | TestFlight | — |
 | `icon` | Every app icon from the artwork | ✓ | — |
 | `icon-strip` | Erase the generator's watermark from the artwork | ✓ | — |
