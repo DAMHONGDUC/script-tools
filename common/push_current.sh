@@ -100,6 +100,4 @@ rc=0
 push_repo "" || rc=$?
 tally "$rc"
 
-summary="$moved pushed${DRY_RUN:+ (dry run — nothing sent)}, $same up to date"
-[ "$refused" = 0 ] || fail "$summary, $refused refused — see ✘ above; nothing was forced"
-done_msg "$summary; nothing was forced"
+table_footer "$moved pushed${DRY_RUN:+ (dry run — nothing sent)}, $same up to date" "nothing was forced"

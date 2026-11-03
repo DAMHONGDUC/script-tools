@@ -42,6 +42,17 @@ row() { printf '%s%s%s%s' "$(pad "$1" "$w_repo")" "$(pad "$2" "$w_branch")" "$(p
 
 table_header() { _line '   ' '' "$C_DIM$(row REPO BRANCH COMMIT STATUS)$C_OFF"; }
 
+# The closing count, its mark in the rows' gutter so it reads as the table's last line. $1 the count, $2 the
+# note after it. Exits 1 when a repo was refused.
+table_footer() {
+  if [ "$refused" = 0 ]; then
+    _line '  ✔' "$C_OK" "$1; $2"
+  else
+    _line '  ✘' "$C_BAD" "$1, $refused refused — see ✘ above; $2" >&2
+    exit 1
+  fi
+}
+
 # Counts one repo's outcome from its exit status: 0 unchanged, 2 moved, anything else refused.
 same=0 moved=0 refused=0
 tally() {

@@ -170,6 +170,4 @@ pull_repo "" "" || rc=$?
 tally "$rc"
 pull_submodules ""
 
-summary="$moved pulled, $same up to date"
-[ "$refused" = 0 ] || fail "$summary, $refused refused — see ✘ above; nothing was committed or pushed"
-done_msg "$summary; nothing was committed or pushed"
+table_footer "$moved pulled, $same up to date" "nothing was committed or pushed"
