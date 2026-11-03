@@ -12,8 +12,8 @@ git submodule add https://github.com/DAMHONGDUC/script-tools.git packages/script
 common/             what every platform shares
   commands.mk         the one command list every platform's make file includes
   COMMANDS.md         that list, what each command means per platform, and the old names
-  pull_latest.sh      `make pull-all` on every platform: project + submodules to their main branch heads
-  push_current.sh     `make push-all` on every platform: submodules, then the project, on their current branches
+  pull_latest.sh      `make pull` on every platform: submodules to their main branch heads, project on its current branch
+  push_current.sh     `make push` on every platform: submodules, then the project, on their current branches
 common/lib/         platform-independent helpers, sourced by platform scripts
   project.sh          find the project root, read script-tools.properties, in_list for flavor checks
   ruby.sh             before fastlane or CocoaPods: ensure_utf8_locale, require_bundler, leave_bundle_without_cocoapods
@@ -90,28 +90,28 @@ Add `Release/` to the project's `.gitignore`.
 
 ## Pulling the latest
 
-`make pull-all` (`common/pull_latest.sh`) brings the project and every submodule, nested ones too, to the head of its main branch, fast-forward only. It never commits and never pushes, and prints one line per repo: `<path>  <branch> <from> → <to>`.
+`make pull` (`common/pull_latest.sh`) puts every submodule, nested ones too, on the head of its main branch, and brings the project to the head of `origin`'s copy of its current branch, fast-forward only. It never commits and never pushes, and prints one row per repo under a `REPO  BRANCH  COMMIT  STATUS` header, then a count of pulled, up to date and refused.
 
 | Repo is | It does |
 | --- | --- |
-| on its main branch | fast-forwards it: `main cb67a84 → d00d123` |
-| on another branch | leaves the checkout, moves only the local main ref: `on feature; main 5d668da → 9f0c1e2, not switched` |
-| a detached submodule | checks out its branch, then fast-forwards — only when that branch already holds the detached commit |
-| ahead of `origin` | nothing to pull: `main ae7991e, already the latest, 1 ahead of origin` |
-| diverged, or dirty | refuses that repo; the others still go, then the command exits 1 |
+| a submodule on its main branch | fast-forwards it: `main  cb67a84 → d00d123  pulled 2 commits` |
+| a submodule on another branch, or detached | checks out its main branch, then fast-forwards: `main  5d668da → 9f0c1e2  pulled 1 commit, was on feature`; a detached commit the branch does not hold refuses |
+| the project, on any branch | fast-forwards that branch to `origin/<branch>`; one `origin` lacks: `not on origin — nothing to pull` |
+| ahead of `origin` | nothing to pull: `main  ae7991e  up to date, 1 ahead of origin` |
+| diverged, dirty, or the project detached | refuses that repo; the others still go, then the command exits 1 |
 
-Main branch: the project's is `origin`'s `main`, else `master`; a submodule's is its `.gitmodules` `branch`, else `main`, else `master`. The project refuses only on local changes the pull would touch; a submodule refuses on any. A submodule never initialised is initialised first.
+A submodule's main branch is its `.gitmodules` `branch`, else `main`, else `master`. The project refuses only on local changes the pull would touch; a submodule refuses on any. A submodule never initialised is initialised first.
 
 ## Pushing
 
-`make push-all` (`common/push_current.sh`) pushes every submodule, nested ones too, then the project, each on the branch it has checked out, to `origin`. Deepest first, so no gitlink reaches `origin` before the commit it points at. It never forces and never commits; uncommitted files are named, not pushed. `DRY_RUN=1` runs `git push --dry-run` and sends nothing.
+`make push` (`common/push_current.sh`) pushes every submodule, nested ones too, then the project, each on the branch it has checked out, to `origin`. Deepest first, so no gitlink reaches `origin` before the commit it points at. It never forces and never commits; uncommitted files are counted, not pushed. `DRY_RUN=1` runs `git push --dry-run` and sends nothing. Output is the same table as `make pull`.
 
 | Repo is | It does |
 | --- | --- |
-| ahead of `origin` on its branch | pushes it: `main ae7991e → 169e788 (1 commit(s))` |
-| on a branch `origin` does not have | creates it there and sets the upstream: `feature/x new on origin at f995f9a` |
-| level with or behind `origin` | nothing to push: `main 561955b, already on origin` |
-| missing commits `origin` has | refuses — `make pull-all` or rebase first; never forced |
+| ahead of `origin` on its branch | pushes it: `main  ae7991e → 169e788  pushed 1 commit` |
+| on a branch `origin` does not have | creates it there and sets the upstream: `feature/x  f995f9a  new branch on origin` |
+| level with or behind `origin` | nothing to push: `main  561955b  up to date` |
+| missing commits `origin` has | refuses — `make pull` or rebase first; never forced |
 | a detached submodule | fine when `origin` already holds the commit, refused otherwise |
 | recording a submodule commit no branch on `origin` holds | refused by git's own `--recurse-submodules=check` |
 
@@ -137,7 +137,7 @@ VARIANT := DevDebug
 include $(SCRIPT_TOOLS)/android/android.mk
 ```
 
-The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); `make help` prints them. Android does: `pull-all`, `push-all`, `setup`, `setup-deep`, `test [TEST=<ClassName>]`, `run-<flavor>` (installs `<Flavor>Debug`; `make run` without flavors), `release-android-<flavor>` (`build_release_apk.sh` then `build_release_aab.sh`), plus its own `sms SENDER=<number> BODY="<text>"`. The rest of the list says why it is not available here.
+The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); `make help` prints them. Android does: `pull`, `push`, `setup`, `setup-deep`, `test [TEST=<ClassName>]`, `run-<flavor>` (installs `<Flavor>Debug`; `make run` without flavors), `release-android-<flavor>` (`build_release_apk.sh` then `build_release_aab.sh`), plus its own `sms SENDER=<number> BODY="<text>"`. The rest of the list says why it is not available here.
 
 ## Flutter scripts
 
@@ -192,8 +192,8 @@ The commands are the shared list in [`common/COMMANDS.md`](common/COMMANDS.md); 
 | Target | Runs |
 | --- | --- |
 | `make` / `make help` | Lists the commands |
-| `make pull-all` | `common/pull_latest.sh` |
-| `make push-all [DRY_RUN=1]` | `common/push_current.sh` |
+| `make pull` | `common/pull_latest.sh` |
+| `make push [DRY_RUN=1]` | `common/push_current.sh` |
 | `make setup` / `setup-deep` | `set_up.sh` / `set_up.sh --deep` |
 | `make test [TEST=<path>]` | `run_tests.sh` |
 | `make run-<flavor>` | `run_app.sh` |
@@ -225,8 +225,8 @@ include $(SCRIPT_TOOLS)/ios/ios.mk
 | Target | Runs |
 | --- | --- |
 | `make` / `make help` | Lists the targets |
-| `make pull-all` | `common/pull_latest.sh` |
-| `make push-all [DRY_RUN=1]` | `common/push_current.sh` |
+| `make pull` | `common/pull_latest.sh` |
+| `make push [DRY_RUN=1]` | `common/push_current.sh` |
 | `make reset-xcode` / `deep-reset-xcode` | `reset_xcode.sh` / `reset_xcode.sh --all` |
 
 `ios.mk` defines `help` like the others; include one platform file per Makefile.
@@ -269,8 +269,8 @@ include $(SCRIPT_TOOLS)/react_native/react_native.mk
 | Target | Runs |
 | --- | --- |
 | `make` / `make help` | Lists the targets |
-| `make pull-all` | `common/pull_latest.sh` |
-| `make push-all [DRY_RUN=1]` | `common/push_current.sh` |
+| `make pull` | `common/pull_latest.sh` |
+| `make push [DRY_RUN=1]` | `common/push_current.sh` |
 | `make set-up [NO_PULL=1]` | `set_up.sh` |
 | `make run-ios [SIMULATOR="iPhone 17 Pro"]` | `npx react-native run-ios` |
 | `make run-android` | `npx react-native run-android` |

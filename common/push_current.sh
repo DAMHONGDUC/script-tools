@@ -18,35 +18,35 @@ cd "$root"
 opts=(--recurse-submodules=check)
 [ -n "${DRY_RUN:-}" ] && opts=(--dry-run)
 
-# One repo's current branch to origin. $1 path from the root ("" for the project). Prints one line; returns 1 when
-# it refused.
+# One repo's current branch to origin. $1 path from the root ("" for the project). Prints one row; exits 0 when
+# nothing was sent, 2 when it pushed, 1 when it refused.
 push_repo() (
-  label="$(pad "${1:-$(basename "$root")}" "$width")"
+  repo="${1:-$(basename "$root")}"
   cd "$root/${1:-.}"
   local_head="$(git rev-parse HEAD)"
   dirty="$(git status --porcelain --ignore-submodules=all | wc -l | tr -d ' ')"
-  [ "$dirty" = 0 ] && dirty='' || dirty=", $dirty uncommitted file(s) not pushed"
+  [ "$dirty" = 0 ] && dirty='' || dirty=", $(plural "$dirty" "uncommitted file") not pushed"
 
   if ! branch="$(git symbolic-ref -q --short HEAD)"; then
     if ! err="$(git fetch -q origin 2>&1)"; then
-      bad "$label cannot fetch origin: ${err##*$'\n'}"
+      bad "$(row "$repo" "(detached)" "$(short HEAD)" "cannot fetch origin: ${err##*$'\n'}")"
       exit 1
     fi
     if [ -n "$(git branch -r --contains HEAD 2>/dev/null)" ]; then
-      ok "$label detached at $(short HEAD), already on origin$dirty"
+      ok "$(row "$repo" "(detached)" "$(short HEAD)" "up to date$dirty")"
       exit 0
     fi
-    bad "$label detached at $(short HEAD), which origin does not have — check out a branch first"
+    bad "$(row "$repo" "(detached)" "$(short HEAD)" "origin does not have this commit — check out a branch first")"
     exit 1
   fi
 
   if ! remote="$(git ls-remote origin "refs/heads/$branch" 2>&1)"; then
-    bad "$label cannot reach origin: ${remote##*$'\n'}"
+    bad "$(row "$repo" "$branch" "$(short HEAD)" "cannot reach origin: ${remote##*$'\n'}")"
     exit 1
   fi
   remote="${remote%%[[:space:]]*}"
   if [ "$remote" = "$local_head" ]; then
-    ok "$label $branch $(short HEAD), already on origin$dirty"
+    ok "$(row "$repo" "$branch" "$(short HEAD)" "up to date$dirty")"
     exit 0
   fi
   # origin's tip unknown here, or not under this one: origin has commits the checkout lacks.
@@ -54,10 +54,11 @@ push_repo() (
   [ -n "$remote" ] && git cat-file -e "$remote^{commit}" 2>/dev/null && known=1
   if [ -n "$remote" ] && ! { [ "$known" = 1 ] && git merge-base --is-ancestor "$remote" HEAD; }; then
     if [ "$known" = 1 ] && git merge-base --is-ancestor HEAD "$remote"; then
-      ok "$label $branch $(short HEAD), $(git rev-list --count "HEAD..$remote") behind origin — nothing to push$dirty"
+      ok "$(row "$repo" "$branch" "$(short HEAD)" \
+        "$(plural "$(git rev-list --count "HEAD..$remote")" commit) behind origin — nothing to push$dirty")"
       exit 0
     fi
-    bad "$label origin/$branch has commits this $branch lacks — make pull-all (or rebase) first; never forced"
+    bad "$(row "$repo" "$branch" "$(short HEAD)" "origin has commits this branch lacks — make pull (or rebase) first")"
     exit 1
   fi
 
@@ -70,27 +71,35 @@ push_repo() (
         reason="it records a submodule commit no branch on origin holds — push that commit's branch first" ;;
       *) reason="$(printf '%s\n' "$err" | grep -m1 -iE 'error|reject|fatal' || printf '%s' "${err##*$'\n'}")" ;;
     esac
-    bad "$label push refused: $reason"
+    bad "$(row "$repo" "$branch" "$(short HEAD)" "push refused: $reason")"
     exit 1
   fi
   if [ -n "$remote" ]; then
-    moved="$(short "$remote") → $(short HEAD) ($(git rev-list --count "$remote..HEAD") commit(s))"
+    commit="$(short "$remote") → $(short HEAD)"
+    sent="pushed $(plural "$(git rev-list --count "$remote..HEAD")" commit)"
   else
-    moved="new on origin at $(short HEAD)"
+    commit="$(short HEAD)"
+    sent="new branch on origin"
   fi
-  ok "$label $branch $moved${DRY_RUN:+, dry run — nothing sent}$dirty"
+  ok "$(row "$repo" "$branch" "$commit" "$sent$dirty")"
+  exit 2
 )
 
-width="$(label_width)"
+table_widths
 
-step "push-all — every repo's current branch to origin, submodules first${DRY_RUN:+ (dry run)}"
-refused=0
+step "push — every repo on its current branch, submodules first${DRY_RUN:+ (dry run)}"
+table_header
 # foreach lists parents before their children; reversed, every submodule goes before the repo that records it.
 while read -r -u 3 path; do
   [ -n "$path" ] || continue
-  push_repo "$path" || refused=$((refused + 1))
+  rc=0
+  push_repo "$path" || rc=$?
+  tally "$rc"
 done 3< <(git submodule foreach --quiet --recursive 'echo "$displaypath"' | sed '1!G;h;$!d')
-push_repo "" || refused=$((refused + 1))
+rc=0
+push_repo "" || rc=$?
+tally "$rc"
 
-[ "$refused" = 0 ] || fail "$refused repo(s) not pushed — see ✘ above; nothing was forced"
-done_msg "pushed${DRY_RUN:+ (dry run — nothing sent)}; nothing was forced"
+summary="$moved pushed${DRY_RUN:+ (dry run — nothing sent)}, $same up to date"
+[ "$refused" = 0 ] || fail "$summary, $refused refused — see ✘ above; nothing was forced"
+done_msg "$summary; nothing was forced"
